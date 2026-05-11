@@ -1,0 +1,3 @@
+mkdir $EXROOT$/esse.loc
+estrtab esse.loc.en.txt :Sfo bin $EXROOT$/esse.loc/en.ecst
+estrtab esse.loc.ru.txt :Sfo bin $EXROOT$/esse.loc/ru.ecst

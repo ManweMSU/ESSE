@@ -1,0 +1,26 @@
+﻿CompileList {
+	A = "constructor/esse.cxx"
+	B = "constructor/ioss.cxx"
+	C = "constructor/kernel.cxx"
+	D = "constructor/esse.loc.ertbs"
+}
+Attachments {
+	A {
+		From = "constructor/esse.loc.ini"
+		To = "esse.loc.ini"
+	}
+	B {
+		From = "constructor/esse.ini"
+		To = "esse.ini"
+	}
+}
+UseVersionDefines = true
+VersionInformation {
+	ApplicationIdentifier = "ESSE"
+	ApplicationName = "Engine Constructor SubSystemae"
+	CompanyIdentifier = "EngineSoftware"
+	CompanyName = "Engine Software"
+	Copyright = "© Engine Software. 2026"
+	InternalName = "esse"
+	Version = "2.99.0.1"
+}
