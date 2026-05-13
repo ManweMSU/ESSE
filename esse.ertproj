@@ -3,6 +3,9 @@
 	B = "constructor/ioss.cxx"
 	C = "constructor/kernel.cxx"
 	D = "constructor/esse.loc.ertbs"
+	E = "constructor/esse_cc.cxx"
+	F = "constructor/esse_rsrc.cxx"
+	G = "constructor/esse_link.cxx"
 }
 Attachments {
 	A {

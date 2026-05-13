@@ -36,7 +36,6 @@ namespace esse {
 			Engine::Time manifest_alternation_date;
 			// dependencies
 			Engine::Volumes::Set<string> needs_modules;
-			Engine::Volumes::Set<string> varies_on_modules;
 			// abstractions and implementations
 			string needs_abstraction_layer_implementation, needs_codecs;
 			string implements_abstraction_layer;
@@ -46,7 +45,7 @@ namespace esse {
 			Engine::Volumes::List<compile_task> compile_list;
 			Engine::Volumes::List<resource_task> resource_list;
 			Engine::Volumes::List<attach_task> attach_list;
-			Engine::Volumes::List<string> include_list, data_files_list;
+			Engine::Volumes::List<string> include_list;
 			Engine::Volumes::Dictionary<string, string> defines_list;
 		};
 
@@ -73,7 +72,7 @@ namespace esse {
 			// root metadata
 			string name, build_path, subsystem;
 			string application_identifier, author_identifier;
-			bool no_high_dpi_scale, no_dock_icon;
+			bool no_high_dpi_scale, no_dock_icon, make_version_defines;
 			// application metadata
 			string application_icon, application_internal_name, application_version;
 			uint application_version_major, application_version_minor, application_version_micro, application_build_number;
@@ -93,10 +92,18 @@ namespace esse {
 		
 		struct build_state;
 		enum class build_target_class { architecture, system, configuration, subsystem };
+		enum class build_tool_status { built_new, built_renew, skipped, failed };
+		struct process_context
+		{
+			virtual void build_status_notify(const string & input, build_tool_status status, Engine::Time t1, Engine::Time t2, const string & output) = 0;
+			virtual void enter_state_critical_section(void) noexcept = 0;
+			virtual void leave_state_critical_section(void) noexcept = 0;
+		};
 		struct build_tool : public object
 		{
 			Engine::Volumes::List<string> extra_command_line;
-			virtual void process_file(const string & input, const string & option, build_state * state) = 0;
+			virtual void process_file(const string & input, const string & option, build_state * state, process_context & context) = 0;
+			virtual void enumerate_extensions(Engine::Array<string> & list) = 0;
 		};
 		struct build_target
 		{
@@ -121,6 +128,8 @@ namespace esse {
 			module * root_module;
 			Engine::Volumes::ObjectDictionary<string, module> modules;
 			Engine::Volumes::ObjectDictionary<string, module> modules_to_build;
+			Engine::Volumes::Set<string> abstraction_layers;
+			Engine::Volumes::ObjectDictionary< string, Engine::Volumes::Set<string> > codec_domains;
 			build_target * project_system, * project_subsystem, * project_architecture, * project_configuration;
 			// current build state
 			bool idle_mode, clean_mode;
@@ -132,10 +141,14 @@ namespace esse {
 			Engine::Volumes::List<resource_task> resource_list;
 			Engine::Volumes::List<attach_task> attach_list;
 			Engine::Volumes::Dictionary<string, string> defines_list;
+			Engine::Volumes::List<string> link_list;
 		};
 
 		string read_localized_string(const localized_string & str);
+		string read_localized_string(const localized_string & str, const string & locale);
 		localized_string load_localized_string(Engine::Storage::RegistryNode * node, const string & path);
+		string escape_string_c(const string & input);
+		void command_line_append(Engine::Array<string> & cmd, const string & pattern, const string & value);
 		bool build_state_initialize(build_state & state, const string & tsc, io_context & io);
 		bool load_esse_project(build_state & state, const string & prc, const string & sys, const string & arch, const string & mode);
 		bool load_engine_runtime_project(build_state & state, const string & prc, const string & sys, const string & arch, const string & mode);

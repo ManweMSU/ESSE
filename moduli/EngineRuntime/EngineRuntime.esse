@@ -1,0 +1,18 @@
+CoClassis = "Communalis"
+CoNomen = "Engine Runtime"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "EngineRuntime"
+CoModuliRequisiti { A = "cor" }
+CoDefini { ENGINE_RUNTIME = true }
+CoTituli { A = "." }
+CoCompila {
+	A = "PlatformDependent/Base.cpp"
+	B = "EngineBase.cpp"
+	C = "Miscellaneous/Encoding.cpp"
+	D = "Miscellaneous/DynamicString.cpp"
+	E = "Miscellaneous/Time.cpp"
+	F = "Syntax/Grammar.cpp"
+	G = "Syntax/Regular.cpp"
+	H = "Syntax/Tokenization.cpp"
+}

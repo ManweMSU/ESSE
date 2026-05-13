@@ -1,0 +1,15 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Cordis [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "cor-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "cor"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" }
+CoCompila {
+	A = "CorBoot.cxx"
+	B = "CorSystemInformation.cxx"
+	C = "CorVirtualMemory.cxx"
+	D = "CorUnicode.cxx"
+}

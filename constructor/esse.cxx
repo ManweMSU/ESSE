@@ -238,11 +238,11 @@ int Main(void)
 					}
 					if (!esse::constructor::make_project_dependencies(build)) return 2;
 					if (!esse::constructor::construct(build)) return 3;
+					if (state.print_output_executable) io.console->WriteLine(build.output_exec_path);
+					if (state.print_output_bundle) io.console->WriteLine(build.output_bundle_path);
 
 					// TODO: IMPLEMENT
 
-					// bool print_output_executable = false;
-					// bool print_output_bundle = false;
 					// bool create_vscode_environment = false, create_vscode_workspace = false;
 
 				}

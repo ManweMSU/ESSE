@@ -1,0 +1,14 @@
+CoClassis = "ImplantatioAbstractionis"
+CoNomen = "ESSE Modulus Cordis"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "cor"
+CoPlanusAbstractionis = "cor"
+CoDefini {
+	ESSE_VERSIO_CORDIS_MAJOR = 1
+	ESSE_VERSIO_CORDIS_MINOR = 99
+	ESSE_VERSIO_CORDIS_MICRO = 0
+}
+CoCompila {
+	A = "CorBasis.cxx"
+}
