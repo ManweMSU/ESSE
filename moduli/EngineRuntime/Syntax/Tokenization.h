@@ -10,7 +10,14 @@ namespace Engine
 		enum class TokenConstantClass { String, Numeric, Boolean, Unknown };
 		enum class NumericTokenClass { Integer, Float, Double };
 
-		class ParserSpellingException : public Exception { public: int Position; string Comments; ParserSpellingException(int At, const string & About); string ToString(void) const override; };
+		class ParserSpellingException : public Exception
+		{
+		public:
+			int Position;
+			string Comments;
+			ParserSpellingException(int At, const string & About);
+			virtual string ToString(void) const;
+		};
 
 		class Token
 		{

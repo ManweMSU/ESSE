@@ -8,7 +8,14 @@ namespace Engine
 {
 	namespace Syntax
 	{
-		class ParserSyntaxException : public Exception { public: int Position; string Comments; ParserSyntaxException(int At, const string & About); string ToString(void) const override; };
+		class ParserSyntaxException : public Exception
+		{
+		public:
+			int Position;
+			string Comments;
+			ParserSyntaxException(int At, const string & About);
+			virtual string ToString(void) const;
+		};
 
 		class Grammar : public Object
 		{

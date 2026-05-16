@@ -24,7 +24,7 @@ namespace esse {
 				if (sizes) for (auto & s : sizes->GetValues()) icon_sizes.InsertLast(sizes->GetValueInteger(s));
 			}
 		}
-		void resource_tool::process_file(const string & input, const string & option, build_state * state, process_context & context)
+		void resource_tool::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
 			// TODO: IMPLEMENT
 			// Engine::Volumes::List<string> extra_command_line;

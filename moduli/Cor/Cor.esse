@@ -11,4 +11,7 @@ CoDefini {
 }
 CoCompila {
 	A = "CorBasis.cxx"
+	B = "CorEncodingConverter.cxx"
+	C = "Classes/CorException.cxx"
+	D = "Classes/CorString.cxx"
 }

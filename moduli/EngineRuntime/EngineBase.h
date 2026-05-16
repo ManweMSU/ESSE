@@ -43,19 +43,11 @@ namespace Engine
 		uint GetReferenceCount(void) const;
 	};
 
-	class Exception : public Object
-	{
-	public:
-		Exception(void);
-		Exception(const Exception & e);
-		Exception(Exception && e);
-		Exception & operator = (const Exception & e);
-		ImmutableString ToString(void) const override;
-	};
-	class OutOfMemoryException : public Exception { public: ImmutableString ToString(void) const override; };
-	class InvalidArgumentException : public Exception { public: ImmutableString ToString(void) const override; };
-	class InvalidFormatException : public Exception { public: ImmutableString ToString(void) const override; };
-	class InvalidStateException : public Exception { public: ImmutableString ToString(void) const override; };
+	typedef ESSE::Exception Exception;
+	typedef ESSE::OutOfMemoryException OutOfMemoryException;
+	typedef ESSE::InvalidArgumentException InvalidArgumentException;
+	typedef ESSE::InvalidFormatException InvalidFormatException;
+	typedef ESSE::InvalidStateException InvalidStateException;
 
 	class ImmutableString final
 	{

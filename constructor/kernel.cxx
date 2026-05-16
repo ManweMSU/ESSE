@@ -797,9 +797,13 @@ namespace esse {
 						auto del = value.FindFirst(L':');
 						compile_task task;
 						if (del >= 0) {
+							task.from_module = mdl->identifier;
 							task.source_path = ExpandPath(module_root + L"/" + value.Fragment(0, del));
 							task.option = value.Fragment(del + 1, -1);
-						} else task.source_path = ExpandPath(module_root + L"/" + value);
+						} else {
+							task.from_module = mdl->identifier;
+							task.source_path = ExpandPath(module_root + L"/" + value);
+						}
 						mdl->compile_list.InsertLast(task);
 					}
 					node = mconf->OpenNode(L"CoAuxilia");
@@ -961,7 +965,7 @@ namespace esse {
 				pool->SubmitTask(CreateFunctionalTask([pstate, pool, sync, cstat, task]() {
 					process_context_iml context(sync);
 					auto tool = pstate->compilers[Path::GetExtension(task.source_path).LowerCase()];
-					if (tool) tool->process_file(task.source_path, task.option, pstate, context); else context.data = pstate->io->localized(317);
+					if (tool) tool->process_file(task.source_path, task.from_module, task.option, pstate, context); else context.data = pstate->io->localized(317);
 					print_tool_status(pstate, context, pstate->io->localized(313), task.source_path);
 					if (context.build_status == build_tool_status::failed) *cstat = false;
 					commit_compile_tasks(*pstate, pool, sync, cstat);
@@ -972,14 +976,14 @@ namespace esse {
 		void perform_resource_task(build_state & state, Semaphore * sync, volatile bool * cstat)
 		{
 			process_context_iml context(sync);
-			state.resource_tool->process_file(L"", L"", &state, context);
+			state.resource_tool->process_file(L"", L"", L"", &state, context);
 			print_tool_status(&state, context, state.io->localized(319), L"");
 			if (context.build_status == build_tool_status::failed) *cstat = false;
 		}
 		void perform_link_task(build_state & state, Semaphore * sync, volatile bool * cstat)
 		{
 			process_context_iml context(sync);
-			state.link_tool->process_file(L"", L"", &state, context);
+			state.link_tool->process_file(L"", L"", L"", &state, context);
 			print_tool_status(&state, context, state.io->localized(320), state.output_exec_path);
 			if (context.build_status == build_tool_status::failed) *cstat = false;
 		}

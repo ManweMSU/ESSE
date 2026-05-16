@@ -147,16 +147,6 @@ namespace Engine
 	ImmutableString Object::ToString(void) const { return ImmutableString(U"Object"); }
 	uint Object::GetReferenceCount(void) const { return _refcount; }
 
-	Exception::Exception(void) {}
-	Exception::Exception(const Exception & e) {}
-	Exception::Exception(Exception && e) {}
-	Exception & Exception::operator=(const Exception & e) { return *this; }
-	ImmutableString Exception::ToString(void) const { return ImmutableString(U"Exception"); }
-	ImmutableString OutOfMemoryException::ToString(void) const { return ImmutableString(U"OutOfMemoryException"); }
-	ImmutableString InvalidArgumentException::ToString(void) const { return ImmutableString(U"InvalidArgumentException"); }
-	ImmutableString InvalidFormatException::ToString(void) const { return ImmutableString(U"InvalidFormatException"); }
-	ImmutableString InvalidStateException::ToString(void) const { return ImmutableString(U"InvalidStateException"); }
-
 	ImmutableString::ImmutableString(void) { text = 0; }
 	ImmutableString::ImmutableString(const ImmutableString & src) { if (src.Length()) { text = new (std::nothrow) widechar[src.Length() + 1]; if (!text) throw OutOfMemoryException(); StringCopy(text, src.text); } else text = 0; }
 	ImmutableString::ImmutableString(ImmutableString && src) { text = src.text; src.text = 0; }

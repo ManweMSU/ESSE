@@ -6,7 +6,7 @@ using namespace Engine::IO;
 using namespace Engine::IO::ConsoleControl;
 
 struct {
-	string input;
+	string input, root_configuration;
 	string os, arch, mode;
 	bool nologo = false, clean = false, informative = false, idle = false;
 	bool print_output_executable = false;
@@ -61,6 +61,13 @@ void ProcessCommandLine(esse::constructor::io_context & io)
 					state.nologo = true;
 				} else if (arg[j] == L'O') {
 					state.print_output_executable = true;
+				} else if (arg[j] == L'R') {
+					i++; if (i >= args->Length()) {
+						(*io.console) << TextColor(12) << io.localized(203) << TextColorDefault() << LineFeed();
+						throw Exception();
+					}
+					auto & arg2 = args->ElementAt(i);
+					state.root_configuration = ExpandPath(arg2);
 				} else if (arg[j] == L'S') {
 					io.silent_mode = true;
 				} else if (arg[j] == L'a') {
@@ -131,6 +138,7 @@ void ProcessCommandLine(esse::constructor::io_context & io)
 			state.input = ExpandPath(arg);
 		}
 	}
+	if (!state.root_configuration.Length()) state.root_configuration = ExpandPath(io.esse_root + L"/esse.ini");
 }
 
 int Main(void)
@@ -141,7 +149,9 @@ int Main(void)
 		if (!state.nologo && !io.silent_mode) {
 			io.console->WriteLine(io.localized(1));
 			io.console->WriteLine(io.localized(2));
+			#ifdef ENGINE_VI_APPVERSION
 			io.console->WriteLine(FormatString(io.localized(3), ENGINE_VI_APPVERSION));
+			#endif
 			io.console->LineFeed();
 		}
 		if (!io.silent_mode && io.verbose_level >= 3) {
@@ -166,7 +176,7 @@ int Main(void)
 
 			} else {
 				esse::constructor::build_state build;
-				if (!esse::constructor::build_state_initialize(build, io.esse_root + L"/esse.ini", io)) return -1;
+				if (!esse::constructor::build_state_initialize(build, state.root_configuration, io)) return -1;
 				build.idle_mode = state.idle;
 				build.clean_mode = state.clean;
 				for (auto & p : state.module_search_list) build.module_search_list.InsertLast(p);

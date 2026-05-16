@@ -16,13 +16,14 @@ namespace esse {
 			SafePointer<Storage::RegistryNode> extra = node->OpenNode(L"ArgumentaExtra");
 			if (extra) for (auto & e : extra->GetValues()) extra_command_line.InsertLast(extra->GetValueString(e));
 		}
-		void ccxx_compiler::process_file(const string & input, const string & option, build_state * state, process_context & context)
+		void ccxx_compiler::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
 			if (state->idle_mode) {
 				context.build_status_notify(input, build_tool_status::skipped, 0, 0, L"");
 				return;
 			}
-			auto output = ExpandPath(state->project_object_path + L"/" + Path::GetFileNameWithoutExtension(input) + L"." + object_extension);
+			auto prefix = mdl.Length() ? mdl + L"-" : L"";
+			auto output = ExpandPath(state->project_object_path + L"/" + prefix + Path::GetFileNameWithoutExtension(input) + L"." + object_extension);
 			Time src_date = 0, out_date = 0;
 			build_tool_status status_success = build_tool_status::built_new;
 			if (!state->clean_mode) try {

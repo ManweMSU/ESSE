@@ -13,6 +13,7 @@ namespace esse {
 		enum class module_class { common = 0, abstraction_layer = 1, abstraction_layer_implementation = 2, codec = 3, resource_engine = 4, common_root = 0x100 };
 		struct compile_task
 		{
+			string from_module;
 			string source_path;
 			string option;
 		};
@@ -102,7 +103,7 @@ namespace esse {
 		struct build_tool : public object
 		{
 			Engine::Volumes::List<string> extra_command_line;
-			virtual void process_file(const string & input, const string & option, build_state * state, process_context & context) = 0;
+			virtual void process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context) = 0;
 			virtual void enumerate_extensions(Engine::Array<string> & list) = 0;
 		};
 		struct build_target

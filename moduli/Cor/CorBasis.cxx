@@ -62,6 +62,9 @@ namespace ESSE
 		}
 		void AcquireRootLock(void) noexcept { while (_esse_global_lock.test_and_set(std::memory_order_acquire)); }
 		void ReleaseRootLock(void) noexcept { _esse_global_lock.clear(std::memory_order_release); }
+		uint16 ReverseByteOrder(uint16 value) noexcept { return (value << 8) | (value >> 8); }
+		uint32 ReverseByteOrder(uint32 value) noexcept { return (uint32(ReverseByteOrder(uint16(value))) << 16) | uint32(ReverseByteOrder(uint16(value >> 16))); }
+		uint64 ReverseByteOrder(uint64 value) noexcept { return (uint64(ReverseByteOrder(uint32(value))) << 32) | uint64(ReverseByteOrder(uint32(value >> 32))); }
 	}
 	void ErrorClear(ErrorContext & ctx) noexcept { ctx.error_code = ctx.error_subcode = 0; }
 	void ErrorSet(ErrorContext & ctx, uintptr code) noexcept { ctx.error_code = code; ctx.error_subcode = 0; }

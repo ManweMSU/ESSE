@@ -14,7 +14,7 @@ namespace esse {
 			SafePointer<Storage::RegistryNode> extra = node->OpenNode(L"ArgumentaExtra");
 			if (extra) for (auto & e : extra->GetValues()) extra_command_line.InsertLast(extra->GetValueString(e));
 		}
-		void linker::process_file(const string & input, const string & option, build_state * state, process_context & context)
+		void linker::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
 			auto postfix = executable_extension.Length() ? L"." + executable_extension : L"";
 			auto transient_output = ExpandPath(state->project_object_path + L"/" + state->output_exec_path + postfix);

@@ -111,6 +111,7 @@ namespace Engine
 	typedef ESSE::uintptr eint;
 	typedef ESSE::handle handle;
 
+	typedef wchar_t legacy_widechar;
 	typedef ESSE::unichar widechar;
 	typedef ESSE::Unicode::NormalizationForm NormalizeForm;
 	typedef ESSE::System::Architecture Platform;

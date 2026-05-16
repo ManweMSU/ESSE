@@ -68,6 +68,10 @@ namespace ESSE
 
 		void AcquireRootLock(void) noexcept;
 		void ReleaseRootLock(void) noexcept;
+
+		uint16 ReverseByteOrder(uint16 value) noexcept;
+		uint32 ReverseByteOrder(uint32 value) noexcept;
+		uint64 ReverseByteOrder(uint64 value) noexcept;
 	}
 
 	struct ErrorContext { uintptr error_code; uintptr error_subcode; };
