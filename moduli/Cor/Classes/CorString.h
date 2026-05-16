@@ -196,7 +196,7 @@ namespace ESSE
 		unichar32 GetCharacterAt(uintptr index) const noexcept;
 
 		static ucs4_string Concatenate(const ucs4_string ** strings, uintptr count);
-		static ucs4_string Concatenate(const unichar32 ** strings, uintptr * lengths, uintptr count);
+		static ucs4_string Concatenate(const unichar32 ** strings, const uintptr * lengths, uintptr count);
 
 		ucs4_string friend operator + (const ucs4_string & a, const ucs4_string & b);
 		ucs4_string friend operator + (const unichar32 * a, const ucs4_string & b);
@@ -205,10 +205,13 @@ namespace ESSE
 
 		intptr FindFirst(unichar32 chr, uintptr not_before = 0) const noexcept;
 		intptr FindFirst(const ucs4_string & str, uintptr not_before = 0) const noexcept;
+		intptr FindFirst(const unichar32 * str, uintptr len, uintptr not_before) const noexcept;
 		intptr FindLast(unichar32 chr, uintptr not_after = intptr(-1)) const noexcept;
 		intptr FindLast(const ucs4_string & str, uintptr not_after = intptr(-1)) const noexcept;
+		intptr FindLast(const unichar32 * str, uintptr len, uintptr not_after) const noexcept;
 
 		ucs4_string Substring(intptr from, intptr length) const;
+		ucs4_string Replace(const unichar32 ** s, const uintptr * sl, const unichar32 ** w, const uintptr * wl, uintptr count) const;
 		ucs4_string Replace(const ucs4_string ** substrings, const ucs4_string ** with, uintptr count) const;
 		ucs4_string Replace(const ucs4_string & substring, const ucs4_string & with) const;
 		ucs4_string Replace(unichar32 substring, const ucs4_string & with) const;
@@ -243,4 +246,15 @@ namespace ESSE
 	};
 
 	typedef ucs4_string string;
+
+	string FormatString(const string & format, const string & a0);
+	string FormatString(const string & format, const string & a0, const string & a1);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7, const string & a8);
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7, const string & a8, const string & a9);
 }

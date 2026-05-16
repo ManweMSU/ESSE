@@ -14,4 +14,6 @@ CoCompila {
 	B = "CorEncodingConverter.cxx"
 	C = "Classes/CorException.cxx"
 	D = "Classes/CorString.cxx"
+	E = "Classes/CorObject.cxx"
+	F = "Classes/CorArray.cxx"
 }

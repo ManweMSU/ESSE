@@ -474,7 +474,7 @@ namespace ESSE
 		_hmem = ucs4_string_handle_allocate(ucs_measure_transcoded_units(src, length * sizeof(*src), Unicode::Encoding::UTF32, Unicode::Encoding::UTF8));
 		U4_UP_RW(_hmem, dest);
 		if (dest_chr) {
-			try { ucs_transcode(dest_chr, (dest_len + 1) * sizeof(*dest_chr), src, length * sizeof(*src), Unicode::Encoding::UTF32, Unicode::Encoding::UTF32); }
+			try { ucs_transcode(dest_chr, (dest_len + 1) * sizeof(*dest_chr), src, length * sizeof(*src), Unicode::Encoding::UTF32, Unicode::Encoding::UTF8); }
 			catch (...) { ucs4_string_handle_deallocate(_hmem); throw; }
 		}
 	}
@@ -561,7 +561,7 @@ namespace ESSE
 		}
 		return result;
 	}
-	ucs4_string ucs4_string::Concatenate(const unichar32 ** strings, uintptr * lengths, uintptr count)
+	ucs4_string ucs4_string::Concatenate(const unichar32 ** strings, const uintptr * lengths, uintptr count)
 	{
 		uintptr length = 0;
 		for (uintptr i = 0; i < count; i++) length += lengths[i];
@@ -1068,6 +1068,14 @@ namespace ESSE
 		for (uintptr i = not_before; i <= data_len - search_len; i++) if (Memory::MemoryCompare(data_chr + i, search_chr, search_len * sizeof(*search_chr)) == 0) return i;
 		return -1;
 	}
+	intptr ucs4_string::FindFirst(const unichar32 * str, uintptr len, uintptr not_before) const noexcept
+	{
+		U4_UP(_hmem, data);
+		if (!len) return not_before <= data_len ? not_before : data_len;
+		if (len > data_len) return -1;
+		for (uintptr i = not_before; i <= data_len - len; i++) if (Memory::MemoryCompare(data_chr + i, str, len * sizeof(*str)) == 0) return i;
+		return -1;
+	}
 	intptr ucs4_string::FindLast(unichar32 chr, uintptr not_after) const noexcept
 	{
 		U4_UP(_hmem, data);
@@ -1086,6 +1094,15 @@ namespace ESSE
 		for (uintptr i = data_len - search_len; i != intptr(-1); i--) if (Memory::MemoryCompare(data_chr + i, search_chr, search_len * sizeof(*search_chr)) == 0) return i;
 		return -1;
 	}
+	intptr ucs4_string::FindLast(const unichar32 * str, uintptr len, uintptr not_after) const noexcept
+	{
+		U4_UP(_hmem, data);
+		if (!len) return not_after <= data_len ? not_after : data_len;
+		if (len > data_len) return -1;
+		if (not_after <= data_len - len) data_len = not_after + len;
+		for (uintptr i = data_len - len; i != intptr(-1); i--) if (Memory::MemoryCompare(data_chr + i, str, len * sizeof(*str)) == 0) return i;
+		return -1;
+	}
 	ucs4_string ucs4_string::Substring(intptr from, intptr length) const
 	{
 		U4_UP(_hmem, data);
@@ -1093,6 +1110,50 @@ namespace ESSE
 		if (uintptr(from) > data_len) return ucs4_string();
 		if (length < 0 || data_len - uintptr(from) < uintptr(length)) length = data_len - from;
 		return ucs4_string(GetData() + from, length);
+	}
+	ucs4_string ucs4_string::Replace(const unichar32 ** s, const uintptr * sl, const unichar32 ** w, const uintptr * wl, uintptr count) const
+	{
+		uintptr nr = 0, lastr = 0;
+		while (true) {
+			intptr f = -1; uintptr j = 0, l = 0;
+			while (j < count) {
+				auto ll = sl[j];
+				if (!ll) throw InvalidArgumentException();
+				auto lf = FindFirst(s[j], sl[j], lastr);
+				if (lf >= 0 && (f < 0 || lf < f)) { f = lf; l = ll; }
+				j++;
+			}
+			if (f >= 0) { nr++; lastr = f + l; } else break;
+		}
+		if (!nr) return *this;
+		uintptr fda_len = 2 * nr + 1;
+		uintptr * fda = reinterpret_cast<uintptr *>(malloc(sizeof(uintptr) * 2 * fda_len));
+		if (!fda) throw OutOfMemoryException();
+		const unichar32 ** pstr = reinterpret_cast<const unichar32 **>(fda);
+		uintptr * plen = reinterpret_cast<uintptr *>(fda + fda_len);
+		nr = lastr = 0;
+		while (true) {
+			intptr f = -1; uintptr j = 0, l = 0, oj = 0;
+			while (j < count) {
+				auto ll = sl[j];
+				auto lf = FindFirst(s[j], sl[j], lastr);
+				if (lf >= 0 && (f < 0 || lf < f)) { f = lf; l = ll; oj = j; }
+				j++;
+			}
+			if (f >= 0) {
+				pstr[2 * nr] = GetData() + lastr;
+				plen[2 * nr] = f - lastr;
+				pstr[2 * nr + 1] = w[oj];
+				plen[2 * nr + 1] = wl[oj];
+				nr++; lastr = f + l;
+			} else break;
+		}
+		pstr[2 * nr] = GetData() + lastr;
+		plen[2 * nr] = GetLength() - lastr;
+		ucs4_string result;
+		try { result = result.Concatenate(pstr, plen, fda_len); } catch (...) { free(fda); throw; }
+		free(fda);
+		return result;
 	}
 	ucs4_string ucs4_string::Replace(const ucs4_string ** substrings, const ucs4_string ** with, uintptr count) const
 	{
@@ -1376,5 +1437,86 @@ namespace ESSE
 		if (CompareCaseInsensitively(*this, L"sic") == 0 || CompareCaseInsensitively(*this, L"1") == 0) return true;
 		else if (CompareCaseInsensitively(*this, L"non") == 0 || CompareCaseInsensitively(*this, L"0") == 0 || GetLength() == 0) return false;
 		else throw InvalidFormatException();
+	}
+
+	string FormatString(const string & format, const string & a0)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0" };
+		uintptr sal[] = { 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData() };
+		uintptr ial[] = { 1, a0.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 2);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1" };
+		uintptr sal[] = { 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 3);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2" };
+		uintptr sal[] = { 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 4);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3" };
+		uintptr sal[] = { 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 5);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 6);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4", U"%5" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData(), a5.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength(), a5.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 7);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4", U"%5", U"%6" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData(), a5.GetData(), a6.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength(), a5.GetLength(), a6.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 8);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4", U"%5", U"%6", U"%7" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData(), a5.GetData(), a6.GetData(), a7.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength(), a5.GetLength(), a6.GetLength(), a7.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 9);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7, const string & a8)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4", U"%5", U"%6", U"%7", U"%8" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData(), a5.GetData(), a6.GetData(), a7.GetData(), a8.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength(), a5.GetLength(), a6.GetLength(), a7.GetLength(), a8.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 10);
+	}
+	string FormatString(const string & format, const string & a0, const string & a1, const string & a2, const string & a3, const string & a4, const string & a5, const string & a6, const string & a7, const string & a8, const string & a9)
+	{
+		const unichar32 * sa[] = { U"%%", U"%0", U"%1", U"%2", U"%3", U"%4", U"%5", U"%6", U"%7", U"%8", U"%9" };
+		uintptr sal[] = { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
+		const unichar32 * ia[] = { U"%", a0.GetData(), a1.GetData(), a2.GetData(), a3.GetData(), a4.GetData(), a5.GetData(), a6.GetData(), a7.GetData(), a8.GetData(), a9.GetData() };
+		uintptr ial[] = { 1, a0.GetLength(), a1.GetLength(), a2.GetLength(), a3.GetLength(), a4.GetLength(), a5.GetLength(), a6.GetLength(), a7.GetLength(), a8.GetLength(), a9.GetLength() };
+		return format.Replace(sa, sal, ia, ial, 11);
 	}
 }

@@ -10,3 +10,6 @@
 
 #include "Classes/CorException.h"
 #include "Classes/CorString.h"
+#include "Classes/CorObject.h"
+#include "Classes/CorArray.hxx"
+#include "Classes/CorVolume.hxx"
