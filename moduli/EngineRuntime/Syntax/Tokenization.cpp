@@ -7,7 +7,7 @@ namespace Engine
 	namespace Syntax
 	{
 		ParserSpellingException::ParserSpellingException(int At, const string & About) : Position(At), Comments(About) {}
-		string ParserSpellingException::ToString(void) const { return L"ParserSpellingException: " + Comments + L" at position " + string(Position); }
+		string ParserSpellingException::ToString(void) const { return U"ParserSpellingException: " + Comments + U" at position " + string(Position); }
 
 		Token::Token(void) {}
 		Token Token::EndOfStreamToken(void) { Token result; result.Class = TokenClass::EndOfStream; return result; }
@@ -24,51 +24,51 @@ namespace Engine
 		{
 			try {
 				if (Content.Length() > 2) {
-					if (Content[1] == L'x' || Content[1] == L'X') {
-						return Content.Fragment(2, -1).ToUInt64(L"0123456789ABCDEF");
-					} else if (Content[1] == L'o' || Content[1] == L'O') {
-						return Content.Fragment(2, -1).ToUInt64(L"01234567");
-					} else if (Content[1] == L'b' || Content[1] == L'B') {
-						return Content.Fragment(2, -1).ToUInt64(L"01");
+					if (Content[1] == U'x' || Content[1] == U'X') {
+						return Content.Fragment(2, -1).ToUInt64(U"0123456789ABCDEF");
+					} else if (Content[1] == U'o' || Content[1] == U'O') {
+						return Content.Fragment(2, -1).ToUInt64(U"01234567");
+					} else if (Content[1] == U'b' || Content[1] == U'B') {
+						return Content.Fragment(2, -1).ToUInt64(U"01");
 					} else return Content.ToUInt64();
 				} else {
 					return Content.ToUInt64();
 				}
 			}
 			catch (...) {
-				throw ParserSpellingException(SourcePosition, L"Integer value is out of range");
+				throw ParserSpellingException(SourcePosition, U"Integer value is out of range");
 			}
 			return 0;
 		}
 		double Token::AsDouble(void) const
 		{
 			double zero = 0.0;
-			if (Content == L"inf") {
+			if (Content == U"inf") {
 				return 1.0 / zero;
-			} else if (Content == L"nan") {
+			} else if (Content == U"nan") {
 				return zero / zero;
 			}
-			if (Content[Content.Length() - 1] == L'f' || Content[Content.Length() - 1] == L'F') return Content.Fragment(0, Content.Length() - 1).ToDouble();
+			if (Content[Content.Length() - 1] == U'f' || Content[Content.Length() - 1] == U'F') return Content.Fragment(0, Content.Length() - 1).ToDouble();
 			return Content.ToDouble();
 		}
 		float Token::AsFloat(void) const
 		{
 			float zero = 0.0f;
-			if (Content == L"inf") {
+			if (Content == U"inf") {
 				return 1.0f / zero;
-			} else if (Content == L"nan") {
+			} else if (Content == U"nan") {
 				return zero / zero;
 			}
-			if (Content[Content.Length() - 1] == L'f' || Content[Content.Length() - 1] == L'F') return Content.Fragment(0, Content.Length() - 1).ToFloat();
+			if (Content[Content.Length() - 1] == U'f' || Content[Content.Length() - 1] == U'F') return Content.Fragment(0, Content.Length() - 1).ToFloat();
 			return Content.ToFloat();
 		}
 		bool Token::AsBoolean(void) const { return Content.Length() > 0; }
 		NumericTokenClass Token::NumericClass(void) const
 		{
-			if (Content == L"inf" || Content == L"nan") return NumericTokenClass::Double;
+			if (Content == U"inf" || Content == U"nan") return NumericTokenClass::Double;
 			for (int i = 0; i < Content.Length(); i++) {
-				if (Content[i] == L'.') {
-					return (Content[Content.Length() - 1] == L'f' || Content[Content.Length() - 1] == L'F') ? NumericTokenClass::Float : NumericTokenClass::Double;
+				if (Content[i] == U'.') {
+					return (Content[Content.Length() - 1] == U'f' || Content[Content.Length() - 1] == U'F') ? NumericTokenClass::Float : NumericTokenClass::Double;
 				}
 			}
 			return NumericTokenClass::Integer;
@@ -103,7 +103,7 @@ namespace Engine
 		bool IsAllowedAlphabetical(widechar c, const Spelling & spelling)
 		{
 			if (spelling.AllowNonLatinNames) return IsAlphabetical(c);
-			else return (c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z');
+			else return (c >= U'A' && c <= U'Z') || (c >= U'a' && c <= U'z');
 		}
 
 		Array<Token>* ParseText(const string & text, const Spelling & spelling)
@@ -112,32 +112,32 @@ namespace Engine
 			SafePointer< Array<Token> > Result = new Array<Token>(0x1000);
 			while (true) {
 				Token token;
-				while (text[pos] == L' ' || text[pos] == L'\t' || text[pos] == L'\r' || text[pos] == L'\n') pos++;
+				while (text[pos] == U' ' || text[pos] == U'\t' || text[pos] == U'\r' || text[pos] == U'\n') pos++;
 				if (!text[pos]) {
 					token.Class = TokenClass::EndOfStream;
 					token.ValueClass = TokenConstantClass::Unknown;
 					token.SourcePosition = pos;
 					Result->Append(token);
 					break;
-				} else if (IsAllowedAlphabetical(text[pos], spelling) || text[pos] == L'_') {
+				} else if (IsAllowedAlphabetical(text[pos], spelling) || text[pos] == U'_') {
 					token.SourcePosition = pos;
 					int sp = pos;
-					while (IsAllowedAlphabetical(text[pos], spelling) || (text[pos] >= L'0' && text[pos] <= L'9') || text[pos] == L'_') pos++;
+					while (IsAllowedAlphabetical(text[pos], spelling) || (text[pos] >= U'0' && text[pos] <= U'9') || text[pos] == U'_') pos++;
 					token.Content = text.Fragment(sp, pos - sp);
 					if (spelling.IsBooleanFalseLiteral(token.Content)) {
-						token.Content = L"";
+						token.Content = U"";
 						token.Class = TokenClass::Constant;
 						token.ValueClass = TokenConstantClass::Boolean;
 					} else if (spelling.IsBooleanTrueLiteral(token.Content)) {
-						token.Content = L"1";
+						token.Content = U"1";
 						token.Class = TokenClass::Constant;
 						token.ValueClass = TokenConstantClass::Boolean;
 					} else if (spelling.IsFloatInfinityLiteral(token.Content)) {
-						token.Content = L"inf";
+						token.Content = U"inf";
 						token.Class = TokenClass::Constant;
 						token.ValueClass = TokenConstantClass::Numeric;
 					} else if (spelling.IsFloatNonNumberLiteral(token.Content)) {
-						token.Content = L"nan";
+						token.Content = U"nan";
 						token.Class = TokenClass::Constant;
 						token.ValueClass = TokenConstantClass::Numeric;
 					} else if (spelling.IsKeyword(token.Content)) {
@@ -148,104 +148,104 @@ namespace Engine
 						token.ValueClass = TokenConstantClass::Unknown;
 					}
 					Result->Append(token);
-				} else if (text[pos] >= L'0' && text[pos] <= L'9') {
+				} else if (text[pos] >= U'0' && text[pos] <= U'9') {
 					token.SourcePosition = pos;
 					token.Class = TokenClass::Constant;
 					token.ValueClass = TokenConstantClass::Numeric;
 					int sp = pos;
-					while ((text[pos] >= L'A' && text[pos] <= L'Z') || (text[pos] >= L'a' && text[pos] <= L'z') || (text[pos] >= L'0' && text[pos] <= L'9')) pos++;
-					if (text[pos] == L'.') {
+					while ((text[pos] >= U'A' && text[pos] <= U'Z') || (text[pos] >= U'a' && text[pos] <= U'z') || (text[pos] >= U'0' && text[pos] <= U'9')) pos++;
+					if (text[pos] == U'.') {
 						pos++;
-						while ((text[pos] >= L'A' && text[pos] <= L'Z') || (text[pos] >= L'a' && text[pos] <= L'z') || (text[pos] >= L'0' && text[pos] <= L'9')) pos++;
+						while ((text[pos] >= U'A' && text[pos] <= U'Z') || (text[pos] >= U'a' && text[pos] <= U'z') || (text[pos] >= U'0' && text[pos] <= U'9')) pos++;
 					}
 					token.Content = text.Fragment(sp, pos - sp);
 					Result->Append(token);
 				} else if (spelling.CommentEndOfLineWord.Length() && text.Length() - pos >= spelling.CommentEndOfLineWord.Length() && text.Fragment(pos, spelling.CommentEndOfLineWord.Length()) == spelling.CommentEndOfLineWord) {
-					while (text[pos] != L'\n' && text[pos] != 0) pos++;
+					while (text[pos] != U'\n' && text[pos] != 0) pos++;
 				} else if (spelling.CommentBlockOpeningWord.Length() && text.Length() - pos >= spelling.CommentBlockOpeningWord.Length() && text.Fragment(pos, spelling.CommentBlockOpeningWord.Length()) == spelling.CommentBlockOpeningWord) {
 					pos += spelling.CommentBlockOpeningWord.Length();
 					while (text[pos] && !(spelling.CommentBlockClosingWord.Length() && text.Length() - pos >= spelling.CommentBlockClosingWord.Length() && text.Fragment(pos, spelling.CommentBlockClosingWord.Length()) == spelling.CommentBlockClosingWord)) pos++;
 					if (text[pos]) pos += spelling.CommentBlockClosingWord.Length();
-				} else if (text[pos] == L'\"' || text[pos] == L'\'') {
+				} else if (text[pos] == U'\"' || text[pos] == U'\'') {
 					widechar opening = text[pos];
 					token.SourcePosition = pos;
 					token.Class = TokenClass::Constant;
 					DynamicString Text;
 					pos++;
 					do {
-						if (text[pos] == L'\n') throw ParserSpellingException(pos, L"Unexpected caret return inside string constant");
-						else if (text[pos] == 0) throw ParserSpellingException(pos, L"Unexpected end-of-stream inside string constant");
+						if (text[pos] == U'\n') throw ParserSpellingException(pos, U"Unexpected caret return inside string constant");
+						else if (text[pos] == 0) throw ParserSpellingException(pos, U"Unexpected end-of-stream inside string constant");
 						else if (text[pos] != opening) {
-							if (text[pos] == L'\\') {
+							if (text[pos] == U'\\') {
 								pos++;
 								uint32 ucsdec = 0xFFFFFFFF;
 								widechar escc = text[pos];
-								if ((escc == L'\\') || (escc == L'\'') || (escc == L'\"') || (escc == L'?') || (escc == L'/')) {
+								if ((escc == U'\\') || (escc == U'\'') || (escc == U'\"') || (escc == U'?') || (escc == U'/')) {
 									Text += escc;
 									pos++;
-								} else if (escc == L'a' || escc == L'A') {
-									Text += L'\a';
+								} else if (escc == U'a' || escc == U'A') {
+									Text += U'\a';
 									pos++;
-								} else if (escc == L'b' || escc == L'B') {
-									Text += L'\b';
+								} else if (escc == U'b' || escc == U'B') {
+									Text += U'\b';
 									pos++;
-								} else if (escc == L'e' || escc == L'E') {
-									Text += L'\33';
+								} else if (escc == U'e' || escc == U'E') {
+									Text += U'\33';
 									pos++;
-								} else if (escc == L'f' || escc == L'F') {
-									Text += L'\f';
+								} else if (escc == U'f' || escc == U'F') {
+									Text += U'\f';
 									pos++;
-								} else if (escc == L'n' || escc == L'N') {
-									Text += L'\n';
+								} else if (escc == U'n' || escc == U'N') {
+									Text += U'\n';
 									pos++;
-								} else if (escc == L'r' || escc == L'R') {
-									Text += L'\r';
+								} else if (escc == U'r' || escc == U'R') {
+									Text += U'\r';
 									pos++;
-								} else if (escc == L't' || escc == L'T') {
-									Text += L'\t';
+								} else if (escc == U't' || escc == U'T') {
+									Text += U'\t';
 									pos++;
-								} else if (escc == L'v' || escc == L'V') {
-									Text += L'\v';
+								} else if (escc == U'v' || escc == U'V') {
+									Text += U'\v';
 									pos++;
-								} else if (escc == L'x' || escc == L'X' || escc == L'U') {
+								} else if (escc == U'x' || escc == U'X' || escc == U'U') {
 									pos++;
 									ucsdec = 0;
 									int count = 0;
-									while ((count < 8) && ((text[pos] >= L'0' && text[pos] <= L'9') || (text[pos] >= L'A' && text[pos] <= L'F') || (text[pos] >= L'a' && text[pos] <= L'f'))) {
+									while ((count < 8) && ((text[pos] >= U'0' && text[pos] <= U'9') || (text[pos] >= U'A' && text[pos] <= U'F') || (text[pos] >= U'a' && text[pos] <= U'f'))) {
 										int rec = 0;
-										if ((text[pos] >= L'0') && (text[pos] <= L'9')) rec = text[pos] - L'0';
-										else if ((text[pos] >= L'A') && (text[pos] <= L'F')) rec = text[pos] - L'A' + 10;
-										else rec = text[pos] - L'a' + 10;
+										if ((text[pos] >= U'0') && (text[pos] <= U'9')) rec = text[pos] - U'0';
+										else if ((text[pos] >= U'A') && (text[pos] <= U'F')) rec = text[pos] - U'A' + 10;
+										else rec = text[pos] - U'a' + 10;
 										ucsdec <<= 4;
 										ucsdec |= rec;
 										count++;
 										pos++;
 									}
-								} else if (escc == L'u') {
+								} else if (escc == U'u') {
 									pos++;
 									ucsdec = 0;
 									int count = 0;
-									while ((count < 4) && ((text[pos] >= L'0' && text[pos] <= L'9') || (text[pos] >= L'A' && text[pos] <= L'F') || (text[pos] >= L'a' && text[pos] <= L'f'))) {
+									while ((count < 4) && ((text[pos] >= U'0' && text[pos] <= U'9') || (text[pos] >= U'A' && text[pos] <= U'F') || (text[pos] >= U'a' && text[pos] <= U'f'))) {
 										int rec = 0;
-										if ((text[pos] >= L'0') && (text[pos] <= L'9')) rec = text[pos] - L'0';
-										else if ((text[pos] >= L'A') && (text[pos] <= L'F')) rec = text[pos] - L'A' + 10;
-										else rec = text[pos] - L'a' + 10;
+										if ((text[pos] >= U'0') && (text[pos] <= U'9')) rec = text[pos] - U'0';
+										else if ((text[pos] >= U'A') && (text[pos] <= U'F')) rec = text[pos] - U'A' + 10;
+										else rec = text[pos] - U'a' + 10;
 										ucsdec <<= 4;
 										ucsdec |= rec;
 										count++;
 										pos++;
 									}
-								} else if ((escc >= L'0') && (escc <= L'7')) {
+								} else if ((escc >= U'0') && (escc <= U'7')) {
 									int count = 1;
 									ucsdec = 0;
-									while ((count < 4) && (escc >= L'0') && (escc <= L'7')) {
-										int rec = text[pos] - L'0';
+									while ((count < 4) && (escc >= U'0') && (escc <= U'7')) {
+										int rec = text[pos] - U'0';
 										ucsdec <<= 3;
 										ucsdec |= rec;
 										count++;
 										pos++;
 									}
-								} else throw ParserSpellingException(pos, L"Unknown escape sequence");
+								} else throw ParserSpellingException(pos, U"Unknown escape sequence");
 								if (ucsdec != 0xFFFFFFFF) {
 									Text += string(&ucsdec, 1, Encoding::UTF32);
 								}
@@ -256,12 +256,12 @@ namespace Engine
 						}
 					} while (text[pos] != opening && text[pos]);
 					if (text[pos] == opening) pos++;
-					if (opening == L'\"') {
+					if (opening == U'\"') {
 						token.Content = Text.ToString();
 						token.ValueClass = TokenConstantClass::String;
 					} else {
 						string str = Text.ToString();
-						if (str.GetEncodedLength(Encoding::UTF32) != 1) throw ParserSpellingException(pos, L"Invalid character constant");
+						if (str.GetEncodedLength(Encoding::UTF32) != 1) throw ParserSpellingException(pos, U"Invalid character constant");
 						uint32 chr;
 						str.Encode(&chr, Encoding::UTF32, false);
 						token.Content = string(chr);
@@ -283,7 +283,7 @@ namespace Engine
 							break;
 						}
 					}
-					if (!found) throw ParserSpellingException(pos, L"Illegal character input");
+					if (!found) throw ParserSpellingException(pos, U"Illegal character input");
 					token.SourcePosition = pos;
 					int sp = pos;
 					do {
@@ -313,23 +313,23 @@ namespace Engine
 			input.Encode(ucs, Encoding::UTF32, false);
 			DynamicString result;
 			for (int i = 0; i < ucs.Length(); i++) {
-				if (ucs[i] < 0x20 || ucs[i] > 0xFFFF || ucs[i] == L'\\' || ucs[i] == L'\"') {
+				if (ucs[i] < 0x20 || ucs[i] > 0xFFFF || ucs[i] == U'\\' || ucs[i] == U'\"') {
 					if (ucs[i] > 0xFFFF) {
-						result += L"\\x" + string(ucs[i], L"0123456789ABCDEF", 8);
-					} else if (ucs[i] == L'\\') {
-						result += L"\\\\";
-					} else if (ucs[i] == L'\"') {
-						result += L"\\\"";
-					} else if (ucs[i] == L'\n') {
-						result += L"\\n";
-					} else if (ucs[i] == L'\r') {
-						result += L"\\r";
-					} else if (ucs[i] == L'\t') {
-						result += L"\\t";
-					} else if (ucs[i] == L'\33') {
-						result += L"\\e";
+						result += U"\\x" + string(ucs[i], U"0123456789ABCDEF", 8);
+					} else if (ucs[i] == U'\\') {
+						result += U"\\\\";
+					} else if (ucs[i] == U'\"') {
+						result += U"\\\"";
+					} else if (ucs[i] == U'\n') {
+						result += U"\\n";
+					} else if (ucs[i] == U'\r') {
+						result += U"\\r";
+					} else if (ucs[i] == U'\t') {
+						result += U"\\t";
+					} else if (ucs[i] == U'\33') {
+						result += U"\\e";
 					} else {
-						result += L"\\" + string(ucs[i], L"01234567", 3);
+						result += U"\\" + string(ucs[i], U"01234567", 3);
 					}
 				} else {
 					result += widechar(ucs[i]);
@@ -345,12 +345,12 @@ namespace Engine
 			int exp = (value & 0x7F800000) >> 23;
 			value &= 0x007FFFFF;
 			if (exp == 0xFF) {
-				if (value == 0) return negative ? (L"-" + spelling.InfinityLiteral) : spelling.InfinityLiteral;
+				if (value == 0) return negative ? (U"-" + spelling.InfinityLiteral) : spelling.InfinityLiteral;
 				else return spelling.NonNumberLiteral;
 			} else {
-				string notation(src, L'.');
-				if (notation.FindFirst(L'.') == -1) notation += L".0";
-				return notation + L"f";
+				string notation(src, U'.');
+				if (notation.FindFirst(U'.') == -1) notation += U".0";
+				return notation + U"f";
 			}
 		}
 		string FormatDoubleToken(double input, const Spelling & spelling)
@@ -361,11 +361,11 @@ namespace Engine
 			int exp = (value & 0x7FF0000000000000) >> 52;
 			value &= 0x000FFFFFFFFFFFFF;
 			if (exp == 0x7FF) {
-				if (value == 0) return negative ? (L"-" + spelling.InfinityLiteral) : spelling.InfinityLiteral;
+				if (value == 0) return negative ? (U"-" + spelling.InfinityLiteral) : spelling.InfinityLiteral;
 				else return spelling.NonNumberLiteral;
 			} else {
-				string notation(src, L'.');
-				if (notation.FindFirst(L'.') == -1) notation += L".0";
+				string notation(src, U'.');
+				if (notation.FindFirst(U'.') == -1) notation += U".0";
 				return notation;
 			}
 		}

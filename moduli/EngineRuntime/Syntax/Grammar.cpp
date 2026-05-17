@@ -5,7 +5,7 @@ namespace Engine
 	namespace Syntax
 	{
 		ParserSyntaxException::ParserSyntaxException(int At, const string & About) : Position(At), Comments(About) {}
-		string ParserSyntaxException::ToString(void) const { return L"ParserSyntaxException: " + Comments + L" at token " + string(Position); }
+		string ParserSyntaxException::ToString(void) const { return U"ParserSyntaxException: " + Comments + U" at token " + string(Position); }
 
 		Grammar::GrammarRule::GrammarRule(void) : Rules(0x20), CanBeginWith(0x10) {}
 		Grammar::GrammarRule::GrammarRule(const GrammarRule & src) : Class(src.Class), Rules(src.Rules), CanBeginWith(0x10), Reference(src.Reference), TokenClass(src.TokenClass), MinRepeat(src.MinRepeat), MaxRepeat(src.MaxRepeat), Label(src.Label) {}
@@ -187,7 +187,7 @@ namespace Engine
 							}
 						} else break;
 					}
-					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, L"Another token expected");
+					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, U"Another token expected");
 				} else if (rule.Class == Grammar::GrammarRule::RuleClass::Variant) {
 					int repeat = 0;
 					while (repeat < rule.MaxRepeat || rule.MaxRepeat <= 0) {
@@ -202,10 +202,10 @@ namespace Engine
 									break;
 								}
 							}
-							if (!found) throw ParserSyntaxException(position, L"Invalid variant token");
+							if (!found) throw ParserSyntaxException(position, U"Invalid variant token");
 						} else break;
 					}
-					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, L"Another token expected");
+					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, U"Another token expected");
 				} else if (rule.Class == Grammar::GrammarRule::RuleClass::Reference) {
 					int repeat = 0;
 					while (repeat < rule.MaxRepeat || rule.MaxRepeat <= 0) {
@@ -216,7 +216,7 @@ namespace Engine
 							ParseRule(node.Subnodes.LastElement(), *replace, grammar, stream, position);
 						} else break;
 					}
-					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, L"Another token expected");
+					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, U"Another token expected");
 				} else if (rule.Class == Grammar::GrammarRule::RuleClass::Token) {
 					int repeat = 0;
 					while (repeat < rule.MaxRepeat || rule.MaxRepeat <= 0) {
@@ -226,7 +226,7 @@ namespace Engine
 							position++;
 						} else break;
 					}
-					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, L"Another token expected");
+					if (repeat < rule.MinRepeat) throw ParserSyntaxException(position, U"Another token expected");
 				}
 			}
 		}
@@ -237,7 +237,7 @@ namespace Engine
 			auto entrance = grammar.Rules[grammar.EntranceRule];
 			if (!entrance) throw Exception();
 			SyntaxParser::ParseRule(Root, *entrance, grammar, token_stream, position);
-			if (token_stream[position].Class != TokenClass::EndOfStream) throw ParserSyntaxException(position, L"End-of-stream expected");
+			if (token_stream[position].Class != TokenClass::EndOfStream) throw ParserSyntaxException(position, U"End-of-stream expected");
 		}
 		SyntaxTree::~SyntaxTree(void) {}
 	}

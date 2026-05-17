@@ -10,7 +10,7 @@ namespace Engine
 			{
 				if (ffrom >= filter.Length() && pfrom < path.Length()) return false;
 				if (ffrom < filter.Length() && pfrom >= path.Length()) {
-					for (int k = ffrom; k < filter.Length(); k++) if (filter[k] != L'*') return false;
+					for (int k = ffrom; k < filter.Length(); k++) if (filter[k] != U'*') return false;
 					if (ffrom == filter.Length() - 1) return true;
 				}
 				if (ffrom >= filter.Length()) return true;
@@ -18,7 +18,7 @@ namespace Engine
 				int j = pfrom;
 				while (true) {
 					int ep = i;
-					while (ep < filter.Length() && filter[ep] != L'*' && filter[ep] != L'?' && filter[ep] != L'\\' && filter[ep] != L'/') ep++;
+					while (ep < filter.Length() && filter[ep] != U'*' && filter[ep] != U'?' && filter[ep] != U'\\' && filter[ep] != U'/') ep++;
 					if (ep > i) {
 						if (path.Length() - j < ep - i) return false;
 						if (string::CompareIgnoreCase(path.Fragment(j, ep - i), filter.Fragment(i, ep - i))) return false;
@@ -27,18 +27,18 @@ namespace Engine
 					}
 					if (i >= filter.Length()) return j >= path.Length();
 					if (j >= path.Length()) return i >= filter.Length() || CheckPatternAt(path, filter, j, i);
-					if (filter[i] == L'*') {
+					if (filter[i] == U'*') {
 						for (int k = j; k <= path.Length(); k++) {
 							if (CheckPatternAt(path, filter, k, i + 1)) return true;
 						}
 						return false;
-					} else if (filter[i] == L'?') {
+					} else if (filter[i] == U'?') {
 						i++; j++;
-					} else if (filter[i] == L'\\') {
-						if (path[i] != L'\\' && path[i] != L'/') return false;
+					} else if (filter[i] == U'\\') {
+						if (path[i] != U'\\' && path[i] != U'/') return false;
 						i++; j++;
-					} else if (filter[i] == L'/') {
-						if (path[i] != L'\\' && path[i] != L'/') return false;
+					} else if (filter[i] == U'/') {
+						if (path[i] != U'\\' && path[i] != U'/') return false;
 						i++; j++;
 					}
 				}
@@ -46,8 +46,8 @@ namespace Engine
 		}
 		bool MatchFilePattern(const string & path, const string & filter)
 		{
-			if (filter == L"*") return true;
-			auto filters = filter.Split(L';');
+			if (filter == U"*") return true;
+			auto filters = filter.Split(U';');
 			for (int i = 0; i < filters.Length(); i++) if (FilePatternHelper::CheckPatternAt(path, filters[i], 0, 0)) return true;
 			return false;
 		}
