@@ -165,7 +165,7 @@ namespace ESSE
 							if (num < 0 && errno != EINTR) { free(cpuinfo); cpuinfo = 0; eof = true; break; }
 							else if (num >= 0) {
 								cpuinfo_size += num;
-								if (num < 0x1000) eof = true;
+								if (num == 0) eof = true;
 								break;
 							}
 						}

@@ -16,4 +16,8 @@ CoCompila {
 	D = "Classes/CorString.cxx"
 	E = "Classes/CorObject.cxx"
 	F = "Classes/CorArray.cxx"
+	G = "Classes/CorTime.cxx"
+	H = "IO/CorPaths.cxx"
+	I = "IO/CorStreams.cxx"
+	J = "IO/CorIPC.cxx"
 }

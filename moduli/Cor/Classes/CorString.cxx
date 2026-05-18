@@ -155,7 +155,7 @@ namespace ESSE
 	{
 		_hmem = ucs1_string_handle_allocate(length);
 		U1_UP_RW(_hmem, dest);
-		if (dest_chr) Memory::MemoryCopy(dest_chr, src, (dest_len + 1) * sizeof(*dest_chr));
+		if (dest_chr) { Memory::MemoryCopy(dest_chr, src, dest_len * sizeof(*dest_chr)); dest_chr[dest_len] = 0; }
 	}
 	ucs1_string::ucs1_string(const unichar16 * src, uintptr length)
 	{
@@ -323,7 +323,7 @@ namespace ESSE
 	{
 		_hmem = ucs2_string_handle_allocate(length);
 		U2_UP_RW(_hmem, dest);
-		if (dest_chr) Memory::MemoryCopy(dest_chr, src, (dest_len + 1) * sizeof(*dest_chr));
+		if (dest_chr) { Memory::MemoryCopy(dest_chr, src, dest_len * sizeof(*dest_chr)); dest_chr[dest_len] = 0; }
 	}
 	ucs2_string::ucs2_string(const unichar32 * src, uintptr length)
 	{
@@ -491,7 +491,7 @@ namespace ESSE
 	{
 		_hmem = ucs4_string_handle_allocate(length);
 		U4_UP_RW(_hmem, dest);
-		if (dest_chr) Memory::MemoryCopy(dest_chr, src, (dest_len + 1) * sizeof(*dest_chr));
+		if (dest_chr) { Memory::MemoryCopy(dest_chr, src, dest_len * sizeof(*dest_chr)); dest_chr[dest_len] = 0; }
 	}
 	ucs4_string::ucs4_string(const void * pdata, intptr data_length, Unicode::Encoding enc)
 	{

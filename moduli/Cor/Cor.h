@@ -13,3 +13,9 @@
 #include "Classes/CorObject.h"
 #include "Classes/CorArray.hxx"
 #include "Classes/CorVolume.hxx"
+#include "Classes/CorTime.h"
+
+#include "IO/CorIO.h"
+#include "IO/CorIPC.h"
+#include "IO/CorPaths.h"
+#include "IO/CorStreams.h"
