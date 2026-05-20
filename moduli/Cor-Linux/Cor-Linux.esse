@@ -12,6 +12,10 @@ CoCompila {
 	B = "CorSystemInformation.cxx"
 	C = "CorVirtualMemory.cxx"
 	D = "CorUnicode.cxx"
-	E = "CorIO.cxx"
-	F = "CorIPC.cxx"
+	E = "CorDL.cxx"
+	F = "CorIO.cxx"
+	G = "CorIPC.cxx"
+	H = "CorThreads.cxx"
+	I = "CorProcesses.cxx"
+	J = "CorShell.cxx"
 }

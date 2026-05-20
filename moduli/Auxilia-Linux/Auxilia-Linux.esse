@@ -1,0 +1,10 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Auxiliorum [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "auxilia-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "auxilia"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" }
+CoCompila { A = "Auxilia.cxx" }

@@ -54,6 +54,9 @@
 223	"Failed to launch the linker."
 224	"Failed to copy the executable."
 225	"Failed to copy the attachment '%0'."
+226	"Failed to load the resource '%0'."
+227	"Failed to write the resource header '%0'."
+228	"Failed to launch the resource compiler."
 
 301 "Operating system targets:"
 302 "Processor architecture targets:"

@@ -1,6 +1,7 @@
 #include "CorBoot.h"
 #include "CorUnicodeEx.h"
 #include <Cor/CorVirtualMemory.h>
+#include <Cor/Tasks/CorProcesses.h>
 
 #include <locale.h>
 #include <unistd.h>
@@ -18,30 +19,41 @@ namespace ESSE
 
 		void ApplicationInit(int argc, const char ** argv) noexcept
 		{
-			
-			// TODO: PERFORM SECONDARY TASKS AND ELEVATION
-			// if (argc > 2 && strcmp(argv[1], "--esse-detach") == 0) {
-			// 	char ** command_line = reinterpret_cast<char **>(malloc(sizeof(char *) * (argc - 1)));
-			// 	if (!command_line) _exit(1);
-			// 	for (int i = 2; i < argc; i++) command_line[i - 2] = const_cast<char *>(argv[i]);
-			// 	command_line[argc - 2] = 0;
-			// 	auto fork_status = fork();
-			// 	if (fork_status < 0) _exit(1);
-			// 	if (fork_status == 0) {
-			// 		execvp(command_line[0], command_line);
-			// 		_exit(0);
-			// 	} else _exit(0);
-			// }
-
+			if (argc > 2 && strcmp(argv[1], "--esse-detach") == 0) {
+				char ** command_line = reinterpret_cast<char **>(malloc(sizeof(char *) * (argc - 1)));
+				if (!command_line) _exit(1);
+				for (int i = 2; i < argc; i++) command_line[i - 2] = const_cast<char *>(argv[i]);
+				command_line[argc - 2] = 0;
+				auto fork_status = fork();
+				if (fork_status < 0) _exit(1);
+				if (fork_status == 0) {
+					execvp(command_line[0], command_line);
+					_exit(0);
+				} else _exit(0);
+			}
+			#ifdef ESSE_ELEVATIO_REQUISITA
+			if (!IsProcessElevated() && argv) {
+				try {
+					CreateProcessDesc desc;
+					desc.flags = CreateProcessSearchPathOnly | CreateProcessSearchPath;
+					#ifdef ESSE_SUBSYSTEMA_CONSOLE
+					desc.image = U"sudo";
+					#else
+					desc.image = U"pkexec";
+					#endif
+					for (int i = 0; i < argc; i++) desc.command_line.Append(argv[i]);
+					auto proc = CreateProcess(desc);
+					proc->Wait();
+					ExitProcess(proc->GetExitCode());
+				} catch (...) { ExitProcess(-1); }
+			}
+			#endif
 			if (argv) { __argument_volume = argv; __argument_count = argc; }
 			if (InterlockedIncrement(__esse_reference_count) == 1) {
 				setlocale(LC_ALL, "");
 				Unicode::Linux_UnicodeLibraryInitialize();
 				__this_process_pid = getpid();
 				signal(SIGPIPE, SIG_IGN);
-
-				// TODO: SET TERMINATION SIGNAL HANDLER
-
 			}
 		}
 		void ApplicationShutdown(void) noexcept {}

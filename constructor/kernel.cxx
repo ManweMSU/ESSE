@@ -654,7 +654,7 @@ namespace esse {
 						if (!mt->systems.IsEmpty() && !mt->systems[state.project_system->identifier.LowerCase()]) {
 							if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 								state.io->console->SetTextColor(ConsoleColor::Cyan);
-								state.io->console->WriteLine(FormatString(L"'%0': systema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+								state.io->console->WriteLine(FormatString(L"  '%0': systema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 								state.io->console->SetTextColor(ConsoleColor::Default);
 							}
 							continue;
@@ -662,14 +662,14 @@ namespace esse {
 						if (!mt->subsystems.IsEmpty() && !mt->subsystems[state.project_subsystem->identifier.LowerCase()]) {
 							if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 								state.io->console->SetTextColor(ConsoleColor::Cyan);
-								state.io->console->WriteLine(FormatString(L"'%0': subsystema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+								state.io->console->WriteLine(FormatString(L"  '%0': subsystema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 								state.io->console->SetTextColor(ConsoleColor::Default);
 							}
 							continue;
 						}
 						if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 							state.io->console->SetTextColor(ConsoleColor::Cyan);
-							state.io->console->WriteLine(FormatString(L"'%0': variatus '%1'.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+							state.io->console->WriteLine(FormatString(L"  '%0': variatus '%1'.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 							state.io->console->SetTextColor(ConsoleColor::Default);
 						}
 						variants.Append(m.value);
@@ -701,7 +701,7 @@ namespace esse {
 					if (!mt->systems.IsEmpty() && !mt->systems[state.project_system->identifier.LowerCase()]) {
 						if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 							state.io->console->SetTextColor(ConsoleColor::Cyan);
-							state.io->console->WriteLine(FormatString(L"'%0': systema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+							state.io->console->WriteLine(FormatString(L"  '%0': systema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 							state.io->console->SetTextColor(ConsoleColor::Default);
 						}
 						continue;
@@ -709,14 +709,14 @@ namespace esse {
 					if (!mt->subsystems.IsEmpty() && !mt->subsystems[state.project_subsystem->identifier.LowerCase()]) {
 						if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 							state.io->console->SetTextColor(ConsoleColor::Cyan);
-							state.io->console->WriteLine(FormatString(L"'%0': subsystema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+							state.io->console->WriteLine(FormatString(L"  '%0': subsystema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 							state.io->console->SetTextColor(ConsoleColor::Default);
 						}
 						continue;
 					}
 					if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 						state.io->console->SetTextColor(ConsoleColor::Cyan);
-						state.io->console->WriteLine(FormatString(L"'%0': codificator '%1'.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+						state.io->console->WriteLine(FormatString(L"  '%0': codificator '%1'.", mdl->needs_abstraction_layer_implementation, mt->identifier));
 						state.io->console->SetTextColor(ConsoleColor::Default);
 					}
 					if (!state.modules_to_build[mt->identifier.LowerCase()]) if (!load_module(state, mt, mdl->identifier)) return false;
@@ -1033,6 +1033,8 @@ namespace esse {
 			if (!alive) return false;
 			if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 				state.io->console->SetTextColor(ConsoleColor::Cyan);
+				state.io->console->WriteLine(L"NOMEN SARCINAE: " + state.output_bundle_path);
+				state.io->console->WriteLine(L"NOMEN EXECUTI: " + state.output_exec_path);
 				state.io->console->WriteLine(L"AD ADHAESIONE:");
 				for (auto & l : state.link_list) {
 					state.io->console->WriteLine(L"  " + l);
@@ -1043,6 +1045,11 @@ namespace esse {
 			}
 			perform_link_task(state, sync, &alive);
 			if (!alive) return false;
+			if (!state.io->silent_mode && state.io->verbose_level >= 3) {
+				state.io->console->SetTextColor(ConsoleColor::Cyan);
+				state.io->console->WriteLine(L"NOMEN EXECUTI ULTIMUM: " + state.output_exec_path);
+				state.io->console->SetTextColor(ConsoleColor::Default);
+			}
 			auto time_finished = GetTimerValue();
 			if (!io.silent_mode && !state.idle_mode) {
 				io.console->SetTextColor(ConsoleColor::Green);

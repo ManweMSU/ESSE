@@ -8,6 +8,7 @@ namespace esse {
 		struct resource_tool : build_tool
 		{
 			resource_tool_mode mode;
+			string resource_driver_module;
 			string resource_tool_command;
 			string output_argument;
 			string resource_object_extension;

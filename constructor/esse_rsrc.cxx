@@ -1,9 +1,18 @@
 #include "esse_rsrc.h"
 
 using namespace Engine;
+using namespace Engine::IO;
+using namespace Engine::Streaming;
 
 namespace esse {
 	namespace constructor {
+		struct resource_record
+		{
+			string name, locale, id;
+			SafePointer<DataBlock> data;
+		};
+		void write_hexadecimal(DynamicString & dest, const DataBlock & data) { for (auto & b : data) dest << L"0x" << HexadecimalBase[b >> 4] << HexadecimalBase[b & 15] << L","; }
+
 		resource_tool::resource_tool(Engine::Storage::RegistryNode * node)
 		{
 			auto mode_string = node->GetValueString(L"Modus");
@@ -11,6 +20,7 @@ namespace esse {
 			else if (string::CompareIgnoreCase(mode_string, L"native") == 0) mode = resource_tool_mode::native;
 			else if (string::CompareIgnoreCase(mode_string, L"sarcina") == 0) mode = resource_tool_mode::bundle;
 			else mode = resource_tool_mode::none;
+			resource_driver_module = node->GetValueString(L"Modulus").LowerCase();
 			resource_tool_command = node->GetValueString(L"Imperatum");
 			output_argument = node->GetValueString(L"ArgumentumDestinationis");
 			resource_object_extension = node->GetValueString(L"ExtensioDestinationis");
@@ -26,23 +36,165 @@ namespace esse {
 		}
 		void resource_tool::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
-			// TODO: IMPLEMENT
-			// Engine::Volumes::List<string> extra_command_line;
-			// resource_tool_mode mode;
-			// string resource_tool_command;
-			// string output_argument;
-			// string resource_object_extension;
+
+			// TODO: PERFORM ICON BUILDS
 			// string icon_codec, icon_extension;
 			// Engine::Volumes::List<int> icon_sizes;
 
-			// TODO: CORRECT: raw-exec-name -- bundle folder (if bundled) -- new-exec-root
-			// string output_exec_path, output_bundle_path, project_build_path;
+			if (mode == resource_tool_mode::embed || mode == resource_tool_mode::bundle) {
+				build_tool_status exit_status = build_tool_status::built_new;
+				Time time_from = 0, time_to = 0;
+				if (!state->resource_list.IsEmpty() || state->modules_to_build[resource_driver_module]) {
 
-			// TODO: REMOVE
-			context.enter_state_critical_section();
-			state->output_exec_path = state->app.name;
-			context.leave_state_critical_section();
-			context.build_status_notify(input, build_tool_status::skipped, 0, 0, L"");
+					// TODO: EMBED APP ICON AS WELL
+
+					if (!state->idle_mode) {
+						Array<resource_record> resource_table(0x20);
+						uint counter = 0;
+						for (auto & r : state->resource_list) {
+							try {
+								FileStream stream(r.source_path, AccessRead, OpenExisting);
+								resource_record rr;
+								rr.data = stream.ReadAll();
+								rr.name = r.resource_name;
+								rr.locale = r.resource_locale;
+								rr.id = L"__resdata_" + string(counter++, HexadecimalBase, 2);
+								resource_table.Append(rr);
+							} catch (...) {
+								context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(226), r.source_path));
+								return;
+							}
+						}
+						DynamicString resfile(0x10000);
+						string resfile_path = ExpandPath(state->project_object_path + L"/auxilia-projecti.cxx");
+						resfile << L"namespace ESSE {";
+						for (auto & rr : resource_table) {
+							resfile << L"const unsigned char " << rr.id << L"[] = {";
+							write_hexadecimal(resfile, *rr.data);
+							resfile << L"};";
+						}
+						resfile << L"unsigned int __rescnt = " << string(resource_table.Length()) << L";";
+						resfile << L"const char * __resnamesA[] = {";
+						for (auto & rr : resource_table) resfile << L"\"" << escape_string_c(rr.name) << L"\",";
+						resfile << L"};";
+						resfile << L"const char ** __resnames = __resnamesA;";
+						resfile << L"const char * __reslocalesA[] = {";
+						for (auto & rr : resource_table) resfile << L"\"" << escape_string_c(rr.locale) << L"\",";
+						resfile << L"};";
+						resfile << L"const char ** __reslocales = __reslocalesA;";
+						resfile << L"const void * __resdataA[] = {";
+						for (auto & rr : resource_table) resfile << rr.id << L",";
+						resfile << L"};";
+						resfile << L"const void ** __resdata = __resdataA;";
+						resfile << L"unsigned int __reslengthsA[] = {";
+						for (auto & rr : resource_table) resfile << string(rr.data->Length()) << L",";
+						resfile << L"};";
+						resfile << L"unsigned int * __reslengths = __reslengthsA;";
+						resfile << L"}";
+						SafePointer<DataBlock> resfile_data_new = resfile.ToString().EncodeSequence(Encoding::UTF8, false);
+						auto resfile_data_update = true;
+						if (FileExists(resfile_path)) try {
+							FileStream stream(resfile_path, AccessRead, OpenExisting);
+							SafePointer<DataBlock> resfile_data_old = stream.ReadAll();
+							if (*resfile_data_new == *resfile_data_old) resfile_data_update = false;
+						} catch (...) {}
+						if (resfile_data_update) {
+							try {
+								FileStream stream(resfile_path, AccessWrite, CreateAlways);
+								stream.WriteArray(resfile_data_new);
+							} catch (...) {
+								context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(227), resfile_path));
+								return;
+							}
+						}
+						auto skip_resource_tool = false;
+						auto output = ExpandPath(state->project_object_path + L"/auxilia-projecti." + resource_object_extension);
+						try {
+							FileStream src(resfile_path, AccessRead, OpenExisting);
+							FileStream out(output, AccessRead, OpenExisting);
+							time_to = DateTime::GetFileAlterTime(src.Handle());
+							time_from = DateTime::GetFileAlterTime(out.Handle());
+							if (time_from > time_to) {
+								skip_resource_tool = true;
+								context.enter_state_critical_section();
+								state->link_list.InsertLast(output);
+								context.leave_state_critical_section();
+							} else exit_status = build_tool_status::built_renew;
+						} catch (...) {}
+						if (!skip_resource_tool) {
+							Array<string> res_args(0x80);
+							res_args << resfile_path;
+							for (auto & x : extra_command_line) res_args.Append(x);
+							command_line_append(res_args, output_argument, output);
+							SafePointer<Process> resource_process;
+							SafePointer<Stream> pipe_read;
+							context.enter_state_critical_section();
+							try {
+								SafePointer<Stream> pipe_write;
+								handle log_read, log_write;
+								IO::CreatePipe(&log_write, &log_read);
+								try { pipe_read = new FileStream(log_read, true); } catch (...) { CloseHandle(log_read); CloseHandle(log_write); throw; }
+								try { pipe_write = new FileStream(log_write, true); } catch (...) { CloseHandle(log_write); throw; }
+								IO::SetStandardOutput(log_write);
+								IO::SetStandardError(log_write);
+								resource_process = CreateCommandProcess(resource_tool_command, &res_args);
+								if (!resource_process) throw Exception();
+								IO::SetStandardOutput(InvalidHandle);
+								IO::SetStandardError(InvalidHandle);
+							} catch (...) {
+								IO::SetStandardOutput(InvalidHandle);
+								IO::SetStandardError(InvalidHandle);
+								context.leave_state_critical_section();
+								context.build_status_notify(input, build_tool_status::failed, 0, 0, state->io->localized(228));
+								return;
+							}
+							context.leave_state_critical_section();
+							SafePointer<TextReader> reader = new TextReader(pipe_read, Encoding::UTF8);
+							auto log = reader->ReadAll();
+							resource_process->Wait();
+							if (resource_process->GetExitCode()) {
+								context.build_status_notify(input, build_tool_status::failed, 0, 0, log);
+								return;
+							}
+							context.enter_state_critical_section();
+							state->link_list.InsertLast(output);
+							context.leave_state_critical_section();
+						}
+					}
+				}
+				if (mode == resource_tool_mode::embed) {
+
+					// TODO: IMPLEMENT METADATA BUILD
+
+					context.enter_state_critical_section();
+					state->output_exec_path = state->app.name;
+					context.leave_state_critical_section();
+					context.build_status_notify(input, exit_status, time_from, time_to, L"");
+				} else if (mode == resource_tool_mode::bundle) {
+
+					// TODO: IMPLEMENT METADATA BUILD
+					
+				}
+			} else if (mode == resource_tool_mode::native) {
+				
+				// TODO: IMPLEMENT ON WINDOWS
+				// Engine::Volumes::List<string> extra_command_line;
+				// resource_tool_mode mode;
+				// string resource_tool_command;
+				// string output_argument;
+				// string resource_object_extension;
+				// string icon_codec, icon_extension;
+				// Engine::Volumes::List<int> icon_sizes;
+
+				// TODO: CORRECT: raw-exec-name -- bundle folder (if bundled) -- new-exec-root
+				// string output_exec_path, output_bundle_path, project_build_path;
+
+			} else {
+				context.enter_state_critical_section();
+				state->output_exec_path = state->app.name;
+				context.leave_state_critical_section();
+				context.build_status_notify(input, build_tool_status::skipped, 0, 0, L"");
+			}
 		}
 		void resource_tool::enumerate_extensions(Engine::Array<string> & list) {}
 		string resource_tool::ToString(void) const
@@ -52,6 +204,7 @@ namespace esse {
 			else if (mode == resource_tool_mode::native) result << L"Adhaesor: native";
 			else if (mode == resource_tool_mode::bundle) result << L"Adhaesor: in sarcinam";
 			else result << L"Adhaesor: error";
+			if (resource_driver_module.Length()) result << L", pons: " << resource_driver_module;
 			result << L", coprocessor: " << resource_tool_command << L" " << output_argument;
 			for (auto & e : extra_command_line) result << L" " << e;
 			result << L" --> ." << resource_object_extension;

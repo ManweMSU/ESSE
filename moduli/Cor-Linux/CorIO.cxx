@@ -39,7 +39,7 @@ namespace ESSE
 			else if (error_number == EOPNOTSUPP) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotImplemented);
 			else if (error_number == EROFS) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::IsReadOnly);
 			else if (error_number == ETXTBSY) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::AccessDenied);
-			else if (error_number == EILSEQ || errno == EADDRNOTAVAIL) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::BadPathName);
+			else if (error_number == EILSEQ || errno == EADDRNOTAVAIL || errno == ELOOP) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::BadPathName);
 			else if (error_number == EBADF) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::InvalidHandle);
 			else if (error_number == EINVAL) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotImplemented);
 			else if (error_number == ENOTEMPTY) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::DirectoryNotEmpty);
@@ -48,7 +48,7 @@ namespace ESSE
 			else if (error_number == EPERM) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::AccessDenied);
 			else if (error_number == EXDEV) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotSameDevice);
 			else if (error_number == ENOBUFS) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotEnoughMemory);
-			else if (error_number == ENOMEM) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotEnoughMemory);
+			else if (error_number == ENOMEM || error_number == EAGAIN) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::NotEnoughMemory);
 			else if (error_number == ENXIO) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::InvalidDevice);
 			else if (error_number == EFBIG) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::FileTooLarge);
 			else if (error_number == EBUSY) ErrorSet(ectx, Errores::ErrorIO, Errores::SuberrorIO::AccessDenied);
@@ -210,6 +210,7 @@ namespace ESSE
 			else if (type == StandardHandleType::Error) fno = 2;
 			else { ErrorSet(ectx, Errores::ErrorInvalidArgument); return; }
 			if (file != InvalidHandle) {
+				if (fno == HandleUnwrap(file)) return;
 				while (true) {
 					auto status = dup2(HandleUnwrap(file), fno);
 					if (status >= 0) break;

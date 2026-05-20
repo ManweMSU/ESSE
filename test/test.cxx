@@ -1,4 +1,5 @@
 #include <Cor/Cor.h>
+#include <Auxilia/Auxilia.h>
 #include <EngineRuntime.h>
 
 using namespace Engine;

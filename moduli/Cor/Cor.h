@@ -15,7 +15,13 @@
 #include "Classes/CorVolume.hxx"
 #include "Classes/CorTime.h"
 
+#include "IO/CorDL.h"
 #include "IO/CorIO.h"
 #include "IO/CorIPC.h"
 #include "IO/CorPaths.h"
 #include "IO/CorStreams.h"
+
+#include "Tasks/CorThreads.h"
+#include "Tasks/CorProcesses.h"
+#include "Tasks/CorShell.h"
+#include "Tasks/CorTasks.h"
