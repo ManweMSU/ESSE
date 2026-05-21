@@ -4,8 +4,9 @@
 	C = "constructor/kernel.cxx"
 	D = "constructor/esse.loc.ertbs"
 	E = "constructor/esse_cc.cxx"
-	F = "constructor/esse_rsrc.cxx"
-	G = "constructor/esse_link.cxx"
+	F = "constructor/esse_scaenaria.cxx"
+	G = "constructor/esse_rsrc.cxx"
+	H = "constructor/esse_link.cxx"
 }
 Attachments {
 	A {
@@ -25,5 +26,5 @@ VersionInformation {
 	CompanyName = "Engine Software"
 	Copyright = "© Engine Software. 2026"
 	InternalName = "esse"
-	Version = "2.99.2.6"
+	Version = "2.99.3.7"
 }

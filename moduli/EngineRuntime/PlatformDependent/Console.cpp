@@ -6,24 +6,27 @@ namespace Engine
 {
 	namespace IO
 	{
-		Console::Console(void) : _con(ESSE::IO::CreateConsole()) { eof = false; }
-		Console::Console(handle output) : _con(ESSE::IO::CreateConsole(output)) { eof = false; }
-		Console::Console(handle output, handle input) : _con(ESSE::IO::CreateConsole(output, input)) { eof = false; }
+		Console::Console(void) : _con(ESSE::IO::CreateConsole()), _event_pending(false) { eof = false; }
+		Console::Console(handle output) : _con(ESSE::IO::CreateConsole(output)), _event_pending(false) { eof = false; }
+		Console::Console(handle output, handle input) : _con(ESSE::IO::CreateConsole(output, input)), _event_pending(false) { eof = false; }
 		Console::~Console(void) {}
 		void Console::Write(const string & text) const { _con->Write(static_cast<const ESSE::unichar32 *>(text)); }
 		void Console::WriteLine(const string & text) const { _con->WriteLine(static_cast<const ESSE::unichar32 *>(text)); }
 		void Console::WriteEncodingSignature(void) const {}
 		uint32 Console::ReadChar(void) const
 		{
-			auto chr = _con->ReadCharacter();
-			if (chr == ESSE::Unicode::CharacterInvalid) eof = true;
-			return chr;
+			ConsoleEventDesc ev;
+			do { ReadEvent(ev); } while (ev.Event != ConsoleEvent::CharacterInput && ev.Event != ConsoleEvent::EndOfFile);
+			if (ev.Event == ConsoleEvent::EndOfFile) {
+				eof = true;
+				return ESSE::Unicode::CharacterInvalid;
+			} else return ev.CharacterCode;
 		}
 		void Console::ReadEvent(ConsoleEventDesc & event) const
 		{
 			ConsoleEventDesc ev2;
 			ESSE::IO::ConsoleEventDesc ev;
-			_con->ReadEvent(ev);
+			if (_event_pending) { ev = _event_buffer; _event_pending = false; } else _con->ReadEvent(ev);
 			if (ev.event == ESSE::IO::ConsoleInputEvent::CharacterInput) {
 				event.Event = ConsoleEvent::CharacterInput;
 				event.CharacterCode = ev.character;
@@ -40,8 +43,19 @@ namespace Engine
 				event.Event = ConsoleEvent::EndOfFile;
 			} else throw ESSE::NotImplementedException();
 		}
-		bool Console::WaitEvent(uint timeout) const { return _con->WaitEventFor(timeout); }
-		void Console::WaitEvent(void) const { return _con->WaitEvent(); }
+		bool Console::WaitEvent(uint timeout) const
+		{
+			if (_event_pending) return true;
+			auto status = _con->WaitEvent(_event_buffer, timeout);
+			if (status) _event_pending = true;
+			return status;
+		}
+		void Console::WaitEvent(void) const
+		{
+			if (_event_pending) return;
+			_con->ReadEvent(_event_buffer);
+			_event_pending = true;
+		}
 		void Console::SetTextColor(int color) const { _con->SetTextColor(color); }
 		void Console::SetTextColor(ConsoleColor color) const { _con->SetTextColor(int(color)); }
 		void Console::SetBackgroundColor(int color) const { _con->SetBackgroundColor(color); }

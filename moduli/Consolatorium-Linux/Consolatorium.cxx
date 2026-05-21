@@ -1,4 +1,5 @@
 #include <Consolatorium/Consolatorium.h>
+#include <Cor/CorSystemInformation.h>
 #include <Cor/CorVirtualKeyCodes.h>
 #include <Cor/Tasks/CorThreads.h>
 #include <Cor-Linux/CorIOEx.h>
@@ -73,6 +74,15 @@ namespace ESSE
 			}
 			virtual bool IsEOF(void) noexcept override { return _eos_faced; }
 		};
+		class SystemConsoleExtension : public Object
+		{
+		public:
+			oref<Semaphore> _sync_in;
+			handle _bus_in, _bus_out;
+		public:
+			SystemConsoleExtension(void) { _sync_in = CreateSemaphore(1); if (!_sync_in) throw OutOfMemoryException(); CreatePipe(_bus_in, _bus_out); }
+			virtual ~SystemConsoleExtension(void) override { CloseHandle(_bus_in); CloseHandle(_bus_out); }
+		};
 		class SystemConsole : public Console
 		{
 			static volatile bool _console_was_resized;
@@ -86,6 +96,7 @@ namespace ESSE
 			unichar8 _undecoded_input[4];
 			struct termios _echo_tio;
 			bool _screen_buffer_alternated, _raw_mode_used;
+			oref<SystemConsoleExtension> _extension;
 		private:
 			static void _console_size_changed(int) noexcept { _console_was_resized = true; }
 			static int _console_signal_thread(void *) noexcept
@@ -117,7 +128,7 @@ namespace ESSE
 			bool _is_output_terminal(void) noexcept { return (isatty(reinterpret_cast<intptr>(_output)) > 0); }
 			bool _is_input_terminal(void) noexcept { return (isatty(reinterpret_cast<intptr>(_input)) > 0); }
 			bool _is_duplex_terminal(void) noexcept { return _is_output_terminal() && _is_input_terminal(); }
-			void _write_raw(const unichar8 * text, uintptr length, ErrorContext & ectx) noexcept { IO::WriteFile(_output, text, length, ectx); }
+			void _write_raw(const unichar8 * text, uintptr length, ErrorContext & ectx) noexcept { WriteFile(_output, text, length, ectx); }
 			void _character_decode_low_level(unichar32 & chr, bool & interrupt, ErrorContext & ectx) noexcept
 			{
 				ErrorContext local;
@@ -251,6 +262,77 @@ namespace ESSE
 					return true;
 				}
 			}
+			bool _read_input_event(ConsoleEventDesc & desc, ErrorContext & ectx) noexcept
+			{
+				unichar32 chr;
+				bool interrupt;
+				_character_read(chr, interrupt, ectx);
+				if (ErrorTest(ectx)) return true;
+				if (interrupt) return false;
+				if (chr == Unicode::CharacterInvalid) {
+					desc.event = ConsoleInputEvent::EndOfStream;
+					return true;
+				} else if (chr == 0) {
+					desc.event = ConsoleInputEvent::KeyInput;
+					desc.virtual_key_code = VirtualKeyCodes::Space;
+					desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
+					return true;
+				} else if (chr == 9 || chr == 10 || chr == 13) {
+					desc.event = ConsoleInputEvent::CharacterInput;
+					desc.character = chr;
+					return true;
+				} else if (chr < 27) {
+					desc.event = ConsoleInputEvent::KeyInput;
+					desc.virtual_key_code = 'A' + chr - 1;
+					desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
+					return true;
+				} else if (chr == 27) {
+					pollfd pfd;
+					pfd.fd = reinterpret_cast<intptr>(_input);
+					pfd.events = POLL_IN;
+					if (poll(&pfd, 1, 0) == 0) {
+						desc.event = ConsoleInputEvent::KeyInput;
+						desc.virtual_key_code = VirtualKeyCodes::Escape;
+						desc.virtual_key_modifiers = 0;
+						return true;
+					} else {
+						auto status = _escaped_key_code_read(desc, ectx);
+						if (status || ErrorTest(ectx)) return true;
+					}
+				} else if (chr == 0x7F) {
+					desc.event = ConsoleInputEvent::KeyInput;
+					desc.virtual_key_code = VirtualKeyCodes::Back;
+					desc.virtual_key_modifiers = 0;
+					return true;
+				} else if (chr >= 32) {
+					desc.event = ConsoleInputEvent::CharacterInput;
+					desc.character = chr;
+					return true;
+				} else return false;
+			}
+			bool _read_bus_event(ConsoleEventDesc & desc, ErrorContext & ectx) noexcept
+			{
+				uint w[2];
+				auto read = ReadFile(_extension->_bus_out, &w, sizeof(w), ectx);
+				if (ErrorTest(ectx)) return true;
+				if (read != sizeof(w)) { ErrorSet(ectx, Errores::ErrorInvalidState); return true; }
+				desc.event = ConsoleInputEvent::SendEvent;
+				desc.user1 = w[0];
+				desc.user2 = w[1];
+				return true;
+			}
+			bool _read_size_event(ConsoleEventDesc & desc, ErrorContext & ectx) noexcept
+			{
+				if (_console_was_resized) {
+					_console_was_resized = false;
+					auto size = GetDimensions(ectx);
+					if (ErrorTest(ectx)) return true;
+					desc.event = ConsoleInputEvent::ConsoleResized;
+					desc.width = size.x;
+					desc.height = size.y;
+					return true;
+				} else return false;
+			}
 		public:
 			SystemConsole(handle output, handle input) : _input(input), _output(output),
 				_unprocessed_input_pointer(0), _unprocessed_input(0x100),
@@ -279,64 +361,58 @@ namespace ESSE
 			virtual void LineFeed(ErrorContext & ectx) noexcept override { if (_raw_mode_used) WriteFile(_output, "\n\r", 2, ectx); else WriteFile(_output, "\n", 1, ectx); }
 			virtual void ReadEvent(ConsoleEventDesc & desc, ErrorContext & ectx) noexcept override
 			{
-				if (_is_input_terminal()) {
-					while (true) {
-						if (_console_was_resized) {
-							_console_was_resized = false;
-							auto size = GetDimensions(ectx);
-							if (ErrorTest(ectx)) return;
-							desc.event = ConsoleInputEvent::ConsoleResized;
-							desc.width = size.x;
-							desc.height = size.y;
-							return;
-						}
-						unichar32 chr;
-						bool interrupt;
-						_character_read(chr, interrupt, ectx);
-						if (ErrorTest(ectx)) return;
-						if (interrupt) continue;
-						if (chr == Unicode::CharacterInvalid) {
-							desc.event = ConsoleInputEvent::EndOfStream;
-							return;
-						} else if (chr == 0) {
-							desc.event = ConsoleInputEvent::KeyInput;
-							desc.virtual_key_code = VirtualKeyCodes::Space;
-							desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
-							return;
-						} else if (chr == 9 || chr == 10 || chr == 13) {
-							desc.event = ConsoleInputEvent::CharacterInput;
-							desc.character = chr;
-							return;
-						} else if (chr < 27) {
-							desc.event = ConsoleInputEvent::KeyInput;
-							desc.virtual_key_code = 'A' + chr - 1;
-							desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
-							return;
-						} else if (chr == 27) {
-							pollfd pfd;
-							pfd.fd = reinterpret_cast<intptr>(_input);
-							pfd.events = POLL_IN;
-							if (poll(&pfd, 1, 0) == 0) {
-								desc.event = ConsoleInputEvent::KeyInput;
-								desc.virtual_key_code = VirtualKeyCodes::Escape;
-								desc.virtual_key_modifiers = 0;
-								return;
-							} else {
-								auto status = _escaped_key_code_read(desc, ectx);
-								if (status || ErrorTest(ectx)) return;
-							}
-						} else if (chr == 0x7F) {
-							desc.event = ConsoleInputEvent::KeyInput;
-							desc.virtual_key_code = VirtualKeyCodes::Back;
-							desc.virtual_key_modifiers = 0;
-							return;
-						} else if (chr >= 32) {
-							desc.event = ConsoleInputEvent::CharacterInput;
-							desc.character = chr;
-							return;
-						}
+				if (_is_input_terminal()) while (true) {
+					if (_extension) {
+						pollfd pfd[2];
+						pfd[0].fd = reinterpret_cast<intptr>(_input);
+						pfd[0].events = POLLIN;
+						pfd[1].fd = reinterpret_cast<intptr>(_extension->_bus_out);
+						pfd[1].events = POLLIN;
+						auto status = poll(pfd, 2, -1);
+						if (status >= 0) {
+							if (_read_size_event(desc, ectx)) return;
+							if ((pfd[0].revents & (POLLIN | POLLHUP | POLLERR)) && _read_input_event(desc, ectx)) return;
+							if ((pfd[1].revents & (POLLIN | POLLHUP | POLLERR)) && _read_bus_event(desc, ectx)) return;
+						} else if (errno == EINTR) {
+							if (_read_size_event(desc, ectx)) return;
+						} else { Linux::ErrorSetPosix(ectx); return; }
+					} else {
+						if (_read_size_event(desc, ectx)) return;
+						if (_read_input_event(desc, ectx)) return;
 					}
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
+			}
+			virtual bool WaitEvent(ConsoleEventDesc & desc, uint32 ms, ErrorContext & ectx) noexcept override
+			{
+				uint started = System::GetMonotonicTime();
+				uint wait_for = ms;
+				if (_is_input_terminal()) while (true) {
+					if (_console_was_resized && _read_size_event(desc, ectx)) return true;
+					if (_unprocessed_input.GetLength() && _unprocessed_input_pointer < _unprocessed_input.GetLength() && _read_input_event(desc, ectx)) return true;
+					pollfd pfd[2];
+					pfd[0].fd = reinterpret_cast<intptr>(_input);
+					pfd[0].events = POLLIN;
+					if (_extension) {
+						pfd[1].fd = reinterpret_cast<intptr>(_extension->_bus_out);
+						pfd[1].events = POLLIN;
+					} else {
+						pfd[1].fd = -1;
+						pfd[1].events = 0;
+					}
+					auto status = poll(pfd, 2, wait_for);
+					if (status > 0) {
+						if (_read_size_event(desc, ectx)) return true;
+						if ((pfd[0].revents & (POLLIN | POLLHUP | POLLERR)) && _read_input_event(desc, ectx)) return true;
+						if ((pfd[1].revents & (POLLIN | POLLHUP | POLLERR)) && _read_bus_event(desc, ectx)) return true;
+					} else if (status == 0) {
+						return false;
+					} else if (errno == EINTR) {
+						if (_read_size_event(desc, ectx)) return true;
+						uint waited = System::GetMonotonicTime() - started;
+						if (waited >= ms) return false;
+						wait_for = ms - waited;
+					} else { Linux::ErrorSetPosix(ectx); return false; }
+				} else { ErrorSet(ectx, Errores::ErrorNotImplemented); return false; }
 			}
 			virtual unichar32 ReadCharacter(ErrorContext & ectx) noexcept override
 			{
@@ -365,36 +441,6 @@ namespace ESSE
 					} while (chr != Unicode::CharacterInvalid && chr != U'\n');
 					return result;
 				ESSE_TRY_OUTRO(string());
-			}
-			virtual void WaitEvent(void) noexcept override
-			{
-				if (!_is_input_terminal()) return;
-				if (_console_was_resized) return;
-				if (_unprocessed_input.GetLength() && _unprocessed_input_pointer < _unprocessed_input.GetLength()) return;
-				pollfd pfd;
-				pfd.fd = reinterpret_cast<intptr>(_input);
-				pfd.events = POLLIN;
-				while (true) {
-					int status = poll(&pfd, 1, -1);
-					if (status >= 0) break;
-					if (errno == EINTR) { if (_console_was_resized) return; } else return;
-				}
-			}
-			virtual bool WaitEventFor(uint32 ms) noexcept override
-			{
-				if (!_is_input_terminal()) return false;
-				if (_console_was_resized) return true;
-				if (_unprocessed_input.GetLength() && _unprocessed_input_pointer < _unprocessed_input.GetLength()) return true;
-				pollfd pfd;
-				pfd.fd = reinterpret_cast<intptr>(_input);
-				pfd.events = POLLIN;
-				while (true) {
-					int status = poll(&pfd, 1, ms);
-					if (status > 0) return true;
-					else if (status == 0) return false;
-					if (errno == EINTR) { if (_console_was_resized) return true; }
-					else return false;
-				}
 			}
 			virtual bool IsConsoleDevice(void) noexcept override { return _is_duplex_terminal(); }
 			virtual void SetTitle(const string & title, ErrorContext & ectx) noexcept override
@@ -462,13 +508,16 @@ namespace ESSE
 				if (!_is_duplex_terminal()) return ConsolePosition(0, 0);
 				ESSE_TRY_INTRO
 					auto in = reinterpret_cast<intptr>(_input);
-					tcdrain(reinterpret_cast<intptr>(_output));
-					tcflush(in, TCIOFLUSH);
+					while (true) {
+						auto status = tcdrain(reinterpret_cast<intptr>(_output));
+						if (status >= 0 || errno != EINTR) break;
+					}
 					struct termios preserve, raw;
 					if (tcgetattr(in, &preserve) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
 					raw = preserve;
 					cfmakeraw(&raw);
-					if (tcsetattr(in, TCSANOW, &raw) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
+					raw.c_lflag |= preserve.c_lflag & ISIG;
+					if (tcsetattr(in, TCSADRAIN, &raw) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
 					_write_raw("\033[6n", 4, ectx);
 					if (ErrorTest(ectx)) return ConsolePosition(0, 0);
 					while (true) try {
@@ -494,16 +543,16 @@ namespace ESSE
 								if (escaped[w - 1] == U'R' && del) {
 									auto y = string(escaped + 2, del - 2).ToUInt32();
 									auto x = string(escaped + del + 1, w - del - 2).ToUInt32();
-									if (tcsetattr(in, TCSANOW, &preserve) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
+									if (tcsetattr(in, TCSADRAIN, &preserve) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
 									return ConsolePosition(x, y);
 								} else _unprocessed_input.Append(escaped, w);
 							} else _unprocessed_input.Append(escaped, 2);
 						} else if (escaped[0] == Unicode::CharacterInvalid) {
 							_unprocessed_input.Append(escaped[0]);
-							if (tcsetattr(in, TCSANOW, &preserve) < 0) Linux::ErrorSetPosix(ectx);
+							if (tcsetattr(in, TCSADRAIN, &preserve) < 0) Linux::ErrorSetPosix(ectx);
 							return ConsolePosition(0, 0);
 						} else _unprocessed_input.Append(escaped[0]);
-					} catch (...) { tcsetattr(in, TCSANOW, &preserve); throw; }
+					} catch (...) { tcsetattr(in, TCSADRAIN, &preserve); throw; }
 				ESSE_TRY_OUTRO(ConsolePosition(0, 0))
 			}
 			virtual void SetCaretPosition(const ConsolePosition & pos, ErrorContext & ectx) noexcept override
@@ -543,19 +592,21 @@ namespace ESSE
 			virtual void SetInputMode(ConsoleInputMode mode, ErrorContext & ectx) noexcept override
 			{
 				if (_is_input_terminal()) {
-					if (_is_output_terminal()) tcdrain(reinterpret_cast<intptr>(_output));
+					if (_is_output_terminal()) while (true) {
+						auto status = tcdrain(reinterpret_cast<intptr>(_output));
+						if (status >= 0 || errno != EINTR) break;
+					}
 					int in = reinterpret_cast<intptr>(_input);
 					if (mode == ConsoleInputMode::Raw && !_raw_mode_used) {
 						struct termios tio_new;
-						if (tcflush(in, TCIOFLUSH) < 0) { Linux::ErrorSetPosix(ectx); return; }
 						if (tcgetattr(in, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; }
 						tio_new = _echo_tio;
 						cfmakeraw(&tio_new);
-						if (tcsetattr(in, TCSANOW, &tio_new) < 0) { Linux::ErrorSetPosix(ectx); return; }
+						tio_new.c_lflag |= ISIG;
+						if (tcsetattr(in, TCSADRAIN, &tio_new) < 0) { Linux::ErrorSetPosix(ectx); return; }
 						_raw_mode_used = true;
 					} else if (mode == ConsoleInputMode::Echo && _raw_mode_used) {
-						if (tcflush(in, TCIOFLUSH) < 0) { Linux::ErrorSetPosix(ectx); return; }
-						if (tcsetattr(in, TCSANOW, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; }
+						if (tcsetattr(in, TCSADRAIN, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; }
 						_raw_mode_used = false;
 					}
 				}
@@ -563,7 +614,10 @@ namespace ESSE
 			virtual void AlternateScreenBuffer(bool alternate, ErrorContext & ectx) noexcept override
 			{
 				if (_is_output_terminal()) {
-					tcdrain(reinterpret_cast<intptr>(_output));
+					if (_is_output_terminal()) while (true) {
+						auto status = tcdrain(reinterpret_cast<intptr>(_output));
+						if (status >= 0 || errno != EINTR) break;
+					}
 					if (alternate && !_screen_buffer_alternated) {
 						_write_raw("\033[?1049h", 8, ectx);
 						if (!ErrorTest(ectx)) _screen_buffer_alternated = true;
@@ -575,6 +629,23 @@ namespace ESSE
 			}
 			virtual void ClearScreen(ErrorContext & ectx) noexcept override { if (_is_output_terminal()) _write_raw("\033[2J\033[1;1H", 10, ectx); }
 			virtual void ClearLine(ErrorContext & ectx) noexcept override { if (_is_output_terminal()) _write_raw("\033[2K\033[1G", 8, ectx); }
+			virtual void EnableSendEvent(ErrorContext & ectx) noexcept override
+			{
+				ESSE_TRY_INTRO
+					if (_extension) return;
+					if (!_is_duplex_terminal()) throw NotImplementedException();
+					_extension = owrap(new SystemConsoleExtension);
+				ESSE_TRY_OUTRO()
+			}
+			virtual void SendEvent(uint u1, uint u2, ErrorContext & ectx) noexcept override
+			{
+				if (!_extension) { ErrorSet(ectx, Errores::ErrorInvalidState); return; }
+				uint w[2] = { u1, u2 };
+				_extension->_sync_in->Wait();
+				auto written = WriteFile(_extension->_bus_in, &w, sizeof(w), ectx);
+				_extension->_sync_in->Open();
+				if (!ErrorTest(ectx) && written != sizeof(w)) ErrorSet(ectx, Errores::ErrorInvalidState);
+			}
 		};
 		volatile bool SystemConsole::_console_was_resized = false;
 		oref<IConsoleSessionEventHandler> SystemConsole::_console_event_handler;

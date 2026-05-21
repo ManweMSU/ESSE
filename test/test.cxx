@@ -5,6 +5,16 @@
 
 using namespace Engine;
 
+class HDLR : public ESSE::IO::IConsoleSessionEventHandler
+{
+public:
+	ESSE::IO::Console * con;
+	virtual void HandleConsoleSessionEvent(ESSE::IO::ConsoleSessionEvent event) noexcept override
+	{
+		con->SendEvent(uint(event), 0);
+	}
+};
+
 int Main(void)
 {
 	auto con = ESSE::IO::CreateConsole();
@@ -14,10 +24,52 @@ int Main(void)
 	try {
 		SystemDesc desc;
 		GetSystemInformation(desc);
-		
+		auto hdlr = ESSE::owrap(new HDLR);
+		hdlr->con = con;
 
 		auto v4 = ESSE::string(ENGINE_VI_APPIDENT) + U" " + static_cast<const widechar *>(Time::GetCurrentTime().ToLocal().ToString()) + U" - Валера \033CFПиздюк\033-- 🥀\n";
 		console.WriteLineFormatted(v4);
+		console.SetTitle(U"}|{ona");
+		console.EnableSendEvent();
+		console.SetSessionEventMode(0xFFFF, hdlr);
+
+		ESSE::IO::ConsoleEventDesc ev;
+		console.SetInputMode(ESSE::IO::ConsoleInputMode::Raw);
+		while (true) {
+			if (!console.WaitEvent(ev, 1000)) {
+				console.WriteLineFormatted(U"\0330CNO EVENT\033--");
+				continue;
+			}
+			auto cp = console.GetCaretPosition();
+			console.WriteLineFormatted(ESSE::FormatString(U"\03309CARET\033--: \033A*%0\033-*, \033E*%1\033-*", cp.x, cp.y));
+			if (ev.event == ESSE::IO::ConsoleInputEvent::CharacterInput) {
+				console.WriteLineFormatted(ESSE::FormatString(U"\0330FCHAR\033--: %0", ESSE::string(ev.character, 1)));
+			} else if (ev.event == ESSE::IO::ConsoleInputEvent::KeyInput) {
+				console.WriteLineFormatted(ESSE::FormatString(U"\0330FKEY \033--: %0, %1", ev.virtual_key_code, ev.virtual_key_modifiers));
+				if (ev.virtual_key_code == ESSE::VirtualKeyCodes::Escape) {
+					console.SetInputMode(ESSE::IO::ConsoleInputMode::Echo);
+					return 0;
+				}
+			} else if (ev.event == ESSE::IO::ConsoleInputEvent::ConsoleResized) {
+				console.WriteLineFormatted(ESSE::FormatString(U"\0330FRES \033--: %0 x %1", ev.width, ev.height));
+			} else if (ev.event == ESSE::IO::ConsoleInputEvent::CharacterInput) {
+				console.WriteLineFormatted(U"\0330FEOS \033--");
+				console.SetInputMode(ESSE::IO::ConsoleInputMode::Echo);
+				return 0;
+			} else if (ev.event == ESSE::IO::ConsoleInputEvent::SendEvent) {
+				auto event = static_cast<ESSE::IO::ConsoleSessionEvent>(ev.user1);
+				if (event == ESSE::IO::ConsoleSessionEvent::ControlC)
+					con->WriteLineFormatted(U"\033E4 Ctrl+C \033--");
+				else if (event == ESSE::IO::ConsoleSessionEvent::Quit)
+					con->WriteLineFormatted(U"\033E4 Quit \033--");
+				else if (event == ESSE::IO::ConsoleSessionEvent::ConsoleClosed)
+					con->WriteLineFormatted(U"\033E4 Close Console \033--");
+				else if (event == ESSE::IO::ConsoleSessionEvent::Terminate)
+					con->WriteLineFormatted(U"\033E4 Terminate \033--");
+				console.SetInputMode(ESSE::IO::ConsoleInputMode::Echo);
+				return 0;
+			}
+		}
 
 		console.Write(U"MODE: ");
 		auto mode = console.ReadLine();

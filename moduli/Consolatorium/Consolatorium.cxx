@@ -15,6 +15,7 @@ namespace ESSE
 		void Console::WriteLine(const string & text) { ErrorContext ectx; ErrorClear(ectx); WriteLine(text, ectx); ErrorThrow(ectx); }
 		void Console::LineFeed(void) { ErrorContext ectx; ErrorClear(ectx); LineFeed(ectx); ErrorThrow(ectx); }
 		void Console::ReadEvent(ConsoleEventDesc & desc) { ErrorContext ectx; ErrorClear(ectx); ReadEvent(desc, ectx); ErrorThrow(ectx); }
+		bool Console::WaitEvent(ConsoleEventDesc & desc, uint32 ms) { ErrorContext ectx; ErrorClear(ectx); auto result = WaitEvent(desc, ms, ectx); ErrorThrow(ectx); return result; }
 		unichar32 Console::ReadCharacter(void) { ErrorContext ectx; ErrorClear(ectx); auto result = ReadCharacter(ectx); ErrorThrow(ectx); return result; }
 		string Console::ReadLine(void) { ErrorContext ectx; ErrorClear(ectx); auto result = ReadLine(ectx); ErrorThrow(ectx); return result; }
 		void Console::SetTitle(const string & title) { ErrorContext ectx; ErrorClear(ectx); SetTitle(title, ectx); ErrorThrow(ectx); }
@@ -30,6 +31,8 @@ namespace ESSE
 		void Console::AlternateScreenBuffer(bool alternate) { ErrorContext ectx; ErrorClear(ectx); AlternateScreenBuffer(alternate, ectx); ErrorThrow(ectx); }
 		void Console::ClearScreen(void) { ErrorContext ectx; ErrorClear(ectx); ClearScreen(ectx); ErrorThrow(ectx); }
 		void Console::ClearLine(void) { ErrorContext ectx; ErrorClear(ectx); ClearLine(ectx); ErrorThrow(ectx); }
+		void Console::EnableSendEvent(void) { ErrorContext ectx; ErrorClear(ectx); EnableSendEvent(ectx); ErrorThrow(ectx); }
+		void Console::SendEvent(uint u1, uint u2) { ErrorContext ectx; ErrorClear(ectx); SendEvent(u1, u2, ectx); ErrorThrow(ectx); }
 		void Console::WriteFormatted(const string & text)
 		{
 			auto data = text.GetData();

@@ -240,18 +240,26 @@ namespace ESSE
 		void CloseHandle(handle file) noexcept { if (file == InvalidHandle) return; close(HandleUnwrap(file)); }
 		uintptr ReadFile(handle file, void * data, uintptr size, ErrorContext & ectx) noexcept
 		{
+			auto pdata = reinterpret_cast<uint8 *>(data);
+			uintptr transferred = 0, pending = size;
 			do {
-				auto status = read(HandleUnwrap(file), data, size);
-				if (status == -1 && errno != EINTR) { ErrorSetPosix(ectx); return 0; }
-				else if (status >= 0) return status;
+				auto status = read(HandleUnwrap(file), pdata + transferred, pending);
+				if (status == -1 && errno != EINTR) { ErrorSetPosix(ectx); return 0; } else if (status >= 0) {
+					pending -= status; transferred += status;
+					if (!status || !pending) return transferred;
+				}
 			} while (true);
 		}
 		uintptr WriteFile(handle file, const void * data, uintptr size, ErrorContext & ectx) noexcept
 		{
+			auto pdata = reinterpret_cast<const uint8 *>(data);
+			uintptr transferred = 0, pending = size;
 			do {
-				auto status = write(HandleUnwrap(file), data, size);
-				if (status == -1 && errno != EINTR) { ErrorSetPosix(ectx); return 0; }
-				else if (status >= 0) return status;
+				auto status = write(HandleUnwrap(file), pdata + transferred, pending);
+				if (status == -1 && errno != EINTR) { ErrorSetPosix(ectx); return 0; } else if (status >= 0) {
+					pending -= status; transferred += status;
+					if (!status || !pending) return transferred;
+				}
 			} while (true);
 		}
 		uint64 SeekFile(handle file, int64 position, SeekOrigin org, ErrorContext & ectx) noexcept

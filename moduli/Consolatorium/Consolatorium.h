@@ -13,7 +13,7 @@ namespace ESSE
 			Red = 12, Magenta = 13, Yellow = 14, White = 15
 		};
 		enum class ConsoleInputMode : uint { Raw = 0, Echo = 1 };
-		enum class ConsoleInputEvent : uint { EndOfStream = 0, CharacterInput = 1, KeyInput = 2, ConsoleResized = 3 };
+		enum class ConsoleInputEvent : uint { EndOfStream = 0, CharacterInput = 1, KeyInput = 2, ConsoleResized = 3, SendEvent = 0x10 };
 		enum class ConsoleSessionEvent : uint { ControlC = 0, Quit = 1, ConsoleClosed = 2, Terminate = 3 };
 		namespace ConsoleVirtualKeyModifier { enum ConsoleVirtualKeyModifiers : uint {
 			Shift		= 0x01,
@@ -41,6 +41,7 @@ namespace ESSE
 				struct { unichar32 character; };
 				struct { uint virtual_key_code, virtual_key_modifiers; };
 				struct { uint width, height; };
+				struct { uint user1, user2; };
 			};
 		};
 		class IConsoleSessionEventHandler : public Object
@@ -58,11 +59,9 @@ namespace ESSE
 			virtual void LineFeed(ErrorContext & ectx) noexcept = 0;
 
 			virtual void ReadEvent(ConsoleEventDesc & desc, ErrorContext & ectx) noexcept = 0;
+			virtual bool WaitEvent(ConsoleEventDesc & desc, uint32 ms, ErrorContext & ectx) noexcept = 0;
 			virtual unichar32 ReadCharacter(ErrorContext & ectx) noexcept = 0;
 			virtual string ReadLine(ErrorContext & ectx) noexcept = 0;
-
-			virtual void WaitEvent(void) noexcept = 0;
-			virtual bool WaitEventFor(uint32 ms) noexcept = 0;
 
 			virtual bool IsConsoleDevice(void) noexcept = 0;
 			virtual void SetTitle(const string & title, ErrorContext & ectx) noexcept = 0;
@@ -78,11 +77,15 @@ namespace ESSE
 			virtual void ClearScreen(ErrorContext & ectx) noexcept = 0;
 			virtual void ClearLine(ErrorContext & ectx) noexcept = 0;
 
+			virtual void EnableSendEvent(ErrorContext & ectx) noexcept = 0;
+			virtual void SendEvent(uint u1, uint u2, ErrorContext & ectx) noexcept = 0;
+
 			void WriteRaw(const unichar32 * text, uintptr length);
 			void Write(const string & text);
 			void WriteLine(const string & text);
 			void LineFeed(void);
 			void ReadEvent(ConsoleEventDesc & desc);
+			bool WaitEvent(ConsoleEventDesc & desc, uint32 ms);
 			unichar32 ReadCharacter(void);
 			string ReadLine(void);
 			void SetTitle(const string & title);
@@ -98,6 +101,8 @@ namespace ESSE
 			void AlternateScreenBuffer(bool alternate);
 			void ClearScreen(void);
 			void ClearLine(void);
+			void EnableSendEvent(void);
+			void SendEvent(uint u1, uint u2);
 
 			void WriteFormatted(const string & text);
 			void WriteLineFormatted(const string & text);

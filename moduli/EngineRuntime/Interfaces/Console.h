@@ -32,6 +32,8 @@ namespace Engine
 		class Console final : virtual public Streaming::ITextWriter, virtual public Streaming::ITextReader
 		{
 			ESSE::oref<ESSE::IO::Console> _con;
+			mutable ESSE::IO::ConsoleEventDesc _event_buffer;
+			mutable bool _event_pending;
 		public:
 			Console(void);
 			Console(handle output);

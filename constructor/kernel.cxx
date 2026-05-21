@@ -1,6 +1,7 @@
 #include "kernel.h"
 
 #include "esse_cc.h"
+#include "esse_scaenaria.h"
 #include "esse_rsrc.h"
 #include "esse_link.h"
 
@@ -249,6 +250,8 @@ namespace esse {
 						if (type == L"compilator/cc") {
 							compiler = new ccxx_compiler(tool);
 							if (!state.cc_tool) state.cc_tool = compiler;
+						} else if (type == L"compilator/ertbs") {
+							compiler = new script_compiler(tool);
 						}
 						if (compiler) {
 							Array<string> formats(0x10);
