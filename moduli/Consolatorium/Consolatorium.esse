@@ -1,0 +1,8 @@
+CoClassis = "ImplantatioAbstractionis"
+CoNomen = "ESSE Modulus Consolatorii"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "consolatorium"
+CoPlanusAbstractionis = "consolatorium"
+CoModuliRequisiti { A = "cor" }
+CoCompila { A = "Consolatorium.cxx" }

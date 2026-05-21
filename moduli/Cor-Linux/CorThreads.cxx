@@ -150,15 +150,18 @@ namespace ESSE
 	oref<Thread> CreateThread(ThreadRoutine routine, void * argument, uint32 stack_size) noexcept { return PosixThread::CreateInstance(routine, argument, stack_size); }
 	oref<Semaphore> CreateSemaphore(uint32 initial) noexcept { try { oref<Semaphore> result; result.SetOwned(new PosixSemaphore(initial)); return result; } catch (...) { return 0; } }
 	oref<Signal> CreateSignal(bool set) noexcept { try { oref<Signal> result; result.SetOwned(new PosixSignal(set)); return result; } catch (...) { return 0; } }
-	bool CreateThreadLocal(handle & index) noexcept
-	{
-		pthread_key_t result;
-		if (pthread_key_create(&result, 0) == 0) {
-			index = reinterpret_cast<handle>(uintptr(result));
-			return true;
-		} else return false;
+	
+	namespace Memory {
+		bool CreateThreadLocal(handle & index) noexcept
+		{
+			pthread_key_t result;
+			if (pthread_key_create(&result, 0) == 0) {
+				index = reinterpret_cast<handle>(uintptr(result));
+				return true;
+			} else return false;
+		}
+		void ReleaseThreadLocal(handle index) noexcept { pthread_key_delete(pthread_key_t(reinterpret_cast<uintptr>(index))); }
+		void SetThreadLocal(handle index, handle value) noexcept { pthread_setspecific(pthread_key_t(reinterpret_cast<uintptr>(index)), value); }
+		handle GetThreadLocal(handle index) noexcept { return pthread_getspecific(pthread_key_t(reinterpret_cast<uintptr>(index))); }
 	}
-	void ReleaseThreadLocal(handle index) noexcept { pthread_key_delete(pthread_key_t(reinterpret_cast<uintptr>(index))); }
-	void SetThreadLocal(handle index, handle value) noexcept { pthread_setspecific(pthread_key_t(reinterpret_cast<uintptr>(index)), value); }
-	handle GetThreadLocal(handle index) noexcept { return pthread_getspecific(pthread_key_t(reinterpret_cast<uintptr>(index))); }
 }

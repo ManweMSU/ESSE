@@ -28,8 +28,10 @@ namespace ESSE
 	oref<Semaphore> CreateSemaphore(uint32 initial) noexcept;
 	oref<Signal> CreateSignal(bool set) noexcept;
 
-	bool CreateThreadLocal(handle & index) noexcept;
-	void ReleaseThreadLocal(handle index) noexcept;
-	void SetThreadLocal(handle index, handle value) noexcept;
-	handle GetThreadLocal(handle index) noexcept;
+	namespace Memory {
+		bool CreateThreadLocal(handle & index) noexcept;
+		void ReleaseThreadLocal(handle index) noexcept;
+		void SetThreadLocal(handle index, handle value) noexcept;
+		handle GetThreadLocal(handle index) noexcept;
+	}
 }

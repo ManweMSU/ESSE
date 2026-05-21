@@ -29,7 +29,7 @@ namespace esse {
 							SafePointer<Stream> table = new FileStream(esse_root + L"/" + localizations + L"/" + language_default + L".ecst", AccessRead, OpenExisting);
 							localization = new Storage::StringTable(table);
 							Assembly::CurrentLocale = language_default;
-						} catch (...) {}
+						} catch (...) { localization = new Storage::StringTable; }
 					}
 				}
 				SafePointer<Storage::RegistryNode> paths;

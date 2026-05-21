@@ -1,0 +1,10 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Consolatorii [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "consolatorium-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "consolatorium"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "consolatorium" }
+CoCompila { A = "Consolatorium.cxx" }

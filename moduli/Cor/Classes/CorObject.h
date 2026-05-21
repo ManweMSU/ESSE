@@ -31,8 +31,18 @@ namespace ESSE
 	{
 	public:
 		virtual void * DynamicCast(const void * cls, ErrorContext & ectx) noexcept = 0;
-		virtual void * GetType(void) noexcept = 0;
+		virtual const void * GetType(void) noexcept = 0;
 	};
+
+	struct DynamicCastStandardClasses
+	{
+		const void * Object;
+		const void * DynamicObject;
+		const void * Console;
+		const void * ITextEncoder;
+		const void * ITextDecoder;
+	};
+	extern DynamicCastStandardClasses Classes;
 
 	template <class V> void swap(V & a, V & b) noexcept { if (&a == &b) return; uint8 buffer[sizeof(V)]; Memory::MemoryCopy(buffer, &a, sizeof(V)); Memory::MemoryCopy(&a, &b, sizeof(V)); Memory::MemoryCopy(&b, buffer, sizeof(V)); }
 	template <class V> void safe_swap(V & a, V & b) { V e = a; a = b; b = e; }

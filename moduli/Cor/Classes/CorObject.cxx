@@ -13,4 +13,12 @@ namespace ESSE
 	string Object::ToStringE(ErrorContext & ectx) const noexcept { ESSE_TRY_INTRO return U"objectum"; ESSE_TRY_OUTRO(string()) }
 	string Object::ToString(void) const { ErrorContext ectx; ErrorClear(ectx); auto result = ToStringE(ectx); ErrorThrow(ectx); return result; }
 	uintptr Object::GetReferenceCount(void) const noexcept { return _reference_count; }
+
+	DynamicCastStandardClasses Classes = {
+		.Object			= handle(uintptr(1)),
+		.DynamicObject	= handle(uintptr(2)),
+		.Console		= handle(uintptr(3)),
+		.ITextEncoder	= handle(uintptr(4)),
+		.ITextDecoder	= handle(uintptr(5)),
+	};
 }
