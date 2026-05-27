@@ -597,12 +597,20 @@ namespace ESSE
 						if (status >= 0 || errno != EINTR) break;
 					}
 					int in = reinterpret_cast<intptr>(_input);
-					if (mode == ConsoleInputMode::Raw && !_raw_mode_used) {
+					if (mode == ConsoleInputMode::Raw) {
 						struct termios tio_new;
-						if (tcgetattr(in, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; }
+						if (!_raw_mode_used) { if (tcgetattr(in, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; } }
 						tio_new = _echo_tio;
 						cfmakeraw(&tio_new);
 						tio_new.c_lflag |= ISIG;
+						if (tcsetattr(in, TCSADRAIN, &tio_new) < 0) { Linux::ErrorSetPosix(ectx); return; }
+						_raw_mode_used = true;
+					} else if (mode == ConsoleInputMode::RawNoInterrupt) {
+						struct termios tio_new;
+						if (!_raw_mode_used) { if (tcgetattr(in, &_echo_tio) < 0) { Linux::ErrorSetPosix(ectx); return; } }
+						tio_new = _echo_tio;
+						cfmakeraw(&tio_new);
+						tio_new.c_lflag &= ~ISIG;
 						if (tcsetattr(in, TCSADRAIN, &tio_new) < 0) { Linux::ErrorSetPosix(ectx); return; }
 						_raw_mode_used = true;
 					} else if (mode == ConsoleInputMode::Echo && _raw_mode_used) {

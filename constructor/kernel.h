@@ -41,7 +41,7 @@ namespace esse {
 			string needs_abstraction_layer_implementation, needs_codecs;
 			string implements_abstraction_layer;
 			bool is_default_abstraction_layer_implementation;
-			Engine::Volumes::Dictionary<string, string> implements_codecs; // codec domain - codec function name
+			Engine::Volumes::Dictionary<string, Engine::Volumes::Set<string> > implements_codecs; // codec domain - codec function name
 			// build rules
 			Engine::Volumes::List<compile_task> compile_list;
 			Engine::Volumes::List<resource_task> resource_list;

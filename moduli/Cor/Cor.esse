@@ -22,4 +22,5 @@ CoCompila {
 	J = "IO/CorIPC.cxx"
 	K = "Tasks/CorProcesses.cxx"
 	L = "Tasks/CorTasks.cxx"
+	M = "Images/CorImages.cxx"
 }

@@ -44,6 +44,22 @@ namespace esse {
 			cc_args << input;
 			for (auto & i : state->include_list) command_line_append(cc_args, include_argument, i);
 			for (auto & d : state->defines_list) command_line_append(cc_args, define_argument, d.key + L"=" + d.value);
+			if (option.Length()) {
+				auto css = state->codec_domains[option.LowerCase()];
+				if (css) {
+					DynamicString impdef, listdef;
+					for (auto & cs : *css) {
+						auto parts = cs.Split(L'.');
+						for (int i = 0; i < parts.Length() - 1; i++) impdef << L"namespace " << parts[i] << L" {";
+						impdef << L"extern ESSE_CODICES_IMPORT_TYPE " << parts.LastElement() << L";";
+						for (int i = 0; i < parts.Length() - 1; i++) impdef << L"}";
+						if (listdef.Length()) listdef << L", ";
+						listdef << L"&::" << cs.Replace(L'.', L"::");
+					}
+					command_line_append(cc_args, define_argument, L"ESSE_CODICES_" + option.UpperCase() + L"_IMPORT=" + impdef.ToString());
+					command_line_append(cc_args, define_argument, L"ESSE_CODICES_" + option.UpperCase() + L"_LIST=" + listdef.ToString());
+				}
+			}
 			for (auto & x : extra_command_line) cc_args.Append(x);
 			command_line_append(cc_args, output_argument, output);
 			SafePointer<Process> compiler;

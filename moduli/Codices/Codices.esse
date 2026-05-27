@@ -1,0 +1,14 @@
+CoClassis = "Codex"
+CoNomen = "ESSE Codificatores"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "codices"
+CoModuliRequisiti { A = "imagines" }
+CoCodicemDefinit {
+	A = "imagines:ESSE.Picturae.BMP.BitmapCodec"
+	B = "imagines:ESSE.Picturae.ICO.IconCodec"
+}
+CoCompila {
+	A = "BitmapCodec.cxx"
+	B = "IconCodec.cxx"
+}

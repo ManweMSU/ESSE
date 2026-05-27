@@ -1,0 +1,27 @@
+CoClassis = "Codex"
+CoNomen = "ESSE Collectio Codificatorum [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "codices-linux"
+CoModuliRequisiti { A = "imagines" }
+CoSystema { A = "Linux" }
+CoCodicemDefinit {
+	A = "imagines:ESSE.Linux.giflib"
+    B = "imagines:ESSE.Linux.libpng_f"
+    C = "imagines:ESSE.Linux.libjpeg_f"
+    D = "imagines:ESSE.Linux.libtiff_f"
+    E = "imagines:ESSE.Linux.libwebp_f"
+	F = "imagines:ESSE.Linux.libheif_f"
+}
+CoCompila {
+    A = "Codices.cxx"
+    B = "GifCodec.cxx"
+	C = "giflib/dgif_lib.c"
+	D = "giflib/egif_lib.c"
+	E = "giflib/gif_err.c"
+	F = "giflib/gif_font.c"
+	G = "giflib/gif_hash.c"
+	H = "giflib/gifalloc.c"
+	I = "giflib/openbsd-reallocarray.c"
+	J = "giflib/quantize.c"
+}

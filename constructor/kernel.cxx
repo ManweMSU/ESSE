@@ -253,6 +253,7 @@ namespace esse {
 						} else if (type == L"compilator/ertbs") {
 							compiler = new script_compiler(tool);
 						}
+						// TODO: ADD OTHER TOOLS
 						if (compiler) {
 							Array<string> formats(0x10);
 							compiler->enumerate_extensions(formats);
@@ -704,7 +705,7 @@ namespace esse {
 					if (!mt->systems.IsEmpty() && !mt->systems[state.project_system->identifier.LowerCase()]) {
 						if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 							state.io->console->SetTextColor(ConsoleColor::Cyan);
-							state.io->console->WriteLine(FormatString(L"  '%0': systema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+							state.io->console->WriteLine(FormatString(L"  '%0': systema requisita de '%1' falsa est.", mdl->needs_codecs, mt->identifier));
 							state.io->console->SetTextColor(ConsoleColor::Default);
 						}
 						continue;
@@ -712,14 +713,14 @@ namespace esse {
 					if (!mt->subsystems.IsEmpty() && !mt->subsystems[state.project_subsystem->identifier.LowerCase()]) {
 						if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 							state.io->console->SetTextColor(ConsoleColor::Cyan);
-							state.io->console->WriteLine(FormatString(L"  '%0': subsystema requisita de '%1' falsa est.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+							state.io->console->WriteLine(FormatString(L"  '%0': subsystema requisita de '%1' falsa est.", mdl->needs_codecs, mt->identifier));
 							state.io->console->SetTextColor(ConsoleColor::Default);
 						}
 						continue;
 					}
 					if (!state.io->silent_mode && state.io->verbose_level >= 3) {
 						state.io->console->SetTextColor(ConsoleColor::Cyan);
-						state.io->console->WriteLine(FormatString(L"  '%0': codificator '%1'.", mdl->needs_abstraction_layer_implementation, mt->identifier));
+						state.io->console->WriteLine(FormatString(L"  '%0': codificator '%1'.", mdl->needs_codecs, mt->identifier));
 						state.io->console->SetTextColor(ConsoleColor::Default);
 					}
 					if (!state.modules_to_build[mt->identifier.LowerCase()]) if (!load_module(state, mt, mdl->identifier)) return false;
@@ -727,10 +728,10 @@ namespace esse {
 			}
 			for (auto & cdx : mdl->implements_codecs) {
 				if (state.codec_domains.ElementExists(cdx.key)) {
-					state.codec_domains[cdx.key]->AddElement(cdx.value);
+					for (auto & f : cdx.value) state.codec_domains[cdx.key]->AddElement(f);
 				} else {
 					SafePointer< Volumes::Set<string> > domain = new Volumes::Set<string>;
-					domain->AddElement(cdx.value);
+					for (auto & f : cdx.value) domain->AddElement(f);
 					state.codec_domains.Append(cdx.key, domain);
 				}
 			}
@@ -791,8 +792,18 @@ namespace esse {
 					mdl->is_default_abstraction_layer_implementation = mconf->GetValueBoolean(L"CoImplantatioDefalta");
 					node = mconf->OpenNode(L"CoCodicemDefinit");
 					if (node) for (auto & v : node->GetValues()) {
-						auto p = node->GetValueString(v).Split(L':');
-						if (p.Length() == 2) mdl->implements_codecs.Append(p[0].LowerCase(), p[1]);
+						auto value = node->GetValueString(v);
+						auto del = value.FindFirst(L':');
+						if (del >= 0) {
+							auto domain = value.Fragment(0, del).LowerCase();
+							auto function = value.Fragment(del + 1, -1);
+							if (mdl->implements_codecs[domain]) {
+								mdl->implements_codecs[domain]->AddElement(function);
+							} else {
+								Volumes::Set<string> set; set.AddElement(function);
+								mdl->implements_codecs.Append(domain, set);
+							}
+						}
 					}
 					node = mconf->OpenNode(L"CoCompila");
 					if (node) for (auto & v : node->GetValues()) {

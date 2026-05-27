@@ -12,7 +12,7 @@ namespace ESSE
 			DarkGray = 8, Blue = 9, Green = 10, Cyan = 11,
 			Red = 12, Magenta = 13, Yellow = 14, White = 15
 		};
-		enum class ConsoleInputMode : uint { Raw = 0, Echo = 1 };
+		enum class ConsoleInputMode : uint { Raw = 0, Echo = 1, RawNoInterrupt = 2 };
 		enum class ConsoleInputEvent : uint { EndOfStream = 0, CharacterInput = 1, KeyInput = 2, ConsoleResized = 3, SendEvent = 0x10 };
 		enum class ConsoleSessionEvent : uint { ControlC = 0, Quit = 1, ConsoleClosed = 2, Terminate = 3 };
 		namespace ConsoleVirtualKeyModifier { enum ConsoleVirtualKeyModifiers : uint {

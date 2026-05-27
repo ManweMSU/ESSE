@@ -1,7 +1,8 @@
-#include <Cor/Cor.h>
+﻿#include <Cor/Cor.h>
 #include <Auxilia/Auxilia.h>
 #include <Consolatorium/Consolatorium.h>
 #include <EngineRuntime.h>
+#include <Imagines/Imagines.h>
 
 using namespace Engine;
 
@@ -29,7 +30,7 @@ int Main(void)
 
 		auto v4 = ESSE::string(ENGINE_VI_APPIDENT) + U" " + static_cast<const widechar *>(Time::GetCurrentTime().ToLocal().ToString()) + U" - Валера \033CFПиздюк\033-- 🥀\n";
 		console.WriteLineFormatted(v4);
-		console.SetTitle(U"}|{ona");
+		console.SetTitle(U"Консоль");
 		console.EnableSendEvent();
 		console.SetSessionEventMode(0xFFFF, hdlr);
 

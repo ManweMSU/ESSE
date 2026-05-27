@@ -25,3 +25,5 @@
 #include "Tasks/CorProcesses.h"
 #include "Tasks/CorShell.h"
 #include "Tasks/CorTasks.h"
+
+#include "Images/CorImages.h"
