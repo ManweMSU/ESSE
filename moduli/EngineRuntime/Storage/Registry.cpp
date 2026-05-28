@@ -4,10 +4,6 @@
 
 namespace Engine
 {
-	// TODO: REVERT
-	Color::Color(uint32 v) : Value(v) {}
-	Color::operator uint32 (void) const { return Value; }
-
 	namespace Storage
 	{
 		ENGINE_PACKED_STRUCTURE(EngineRegistryHeader)

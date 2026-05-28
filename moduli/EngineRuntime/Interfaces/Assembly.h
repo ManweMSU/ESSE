@@ -15,6 +15,6 @@ namespace Engine
 
 		void SetLocalizedCommonStrings(Storage::StringTable * table);
 		Storage::StringTable * GetLocalizedCommonStrings(void);
-		const widechar * GetLocalizedCommonString(int ID, const widechar * alternate = L"");
+		const widechar * GetLocalizedCommonString(int ID, const widechar * alternate = U"");
 	}
 }

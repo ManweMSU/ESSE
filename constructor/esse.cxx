@@ -145,6 +145,7 @@ int Main(void)
 {
 	try {
 		esse::constructor::io_context io;
+		Codec::InitializeDefaultCodecs();
 		ProcessCommandLine(io);
 		if (!state.nologo && !io.silent_mode) {
 			io.console->WriteLine(io.localized(1));

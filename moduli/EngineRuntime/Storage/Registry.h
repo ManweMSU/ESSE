@@ -2,22 +2,10 @@
 
 #include "../EngineBase.h"
 #include "../Streaming.h"
-// TODO: REVERT
-//#include "../Graphics/GraphicsBase.h"
+#include "../Graphics/GraphicsBase.h"
 
 namespace Engine
 {
-	// TODO: REVERT
-	struct Color {
-		union 
-		{
-			uint32 Value;
-			struct { uint8 r, g, b, a; };
-		};
-		Color(uint32 v);
-		operator uint32 (void) const;
-	};
-
 	namespace Storage
 	{
 		enum class RegistryValueType { Unknown = 0,
