@@ -15,10 +15,14 @@ namespace ESSE
 	uintptr Object::GetReferenceCount(void) const noexcept { return _reference_count; }
 
 	DynamicCastStandardClasses Classes = {
-		.Object			= handle(uintptr(1)),
-		.DynamicObject	= handle(uintptr(2)),
-		.Console		= handle(uintptr(3)),
-		.ITextEncoder	= handle(uintptr(4)),
-		.ITextDecoder	= handle(uintptr(5)),
+		.Object						= handle(uintptr(0x01)),
+		.DynamicObject				= handle(uintptr(0x02)),
+		.Console					= handle(uintptr(0x03)),
+		.ITextEncoder				= handle(uintptr(0x04)),
+		.ITextDecoder				= handle(uintptr(0x05)),
+		.IDevice					= handle(uintptr(0x06)),
+		.IDeviceContext				= handle(uintptr(0x07)),
+		.IDeviceContext2D			= handle(uintptr(0x08)),
+		.IDeviceContextFactory2D	= handle(uintptr(0x09)),
 	};
 }

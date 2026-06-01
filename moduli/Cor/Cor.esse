@@ -23,4 +23,5 @@ CoCompila {
 	K = "Tasks/CorProcesses.cxx"
 	L = "Tasks/CorTasks.cxx"
 	M = "Images/CorImages.cxx"
+	N = "Images/CorGraphics.cxx"
 }

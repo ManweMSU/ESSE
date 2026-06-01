@@ -41,6 +41,10 @@ namespace ESSE
 		const void * Console;
 		const void * ITextEncoder;
 		const void * ITextDecoder;
+		const void * IDevice;
+		const void * IDeviceContext;
+		const void * IDeviceContext2D;
+		const void * IDeviceContextFactory2D;
 	};
 	extern DynamicCastStandardClasses Classes;
 

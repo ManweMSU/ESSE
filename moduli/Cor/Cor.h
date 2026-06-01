@@ -27,3 +27,4 @@
 #include "Tasks/CorTasks.h"
 
 #include "Images/CorImages.h"
+#include "Images/CorGraphics.h"

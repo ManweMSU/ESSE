@@ -3,7 +3,7 @@ CoNomen = "Engine Runtime"
 CoAuthor = "Engine Software"
 CoVersio = "2.0.0.1"
 CoIndentitas = "EngineRuntime"
-CoModuliRequisiti { A = "cor" B = "auxilia" C = "consolatorium" D = "imagines" }
+CoModuliRequisiti { A = "cor" B = "auxilia" C = "consolatorium" D = "imagines" E = "graphica" }
 CoDefini { ENGINE_RUNTIME = true }
 CoTituli { A = "." }
 CoCompila {

@@ -1,0 +1,17 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Graphicae [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "graphica-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "graphica"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "graphica" }
+CoDefini {
+	ESSE_MODULUS_GRAPHICA_VULKAN = true
+}
+CoCompila {
+	A = "Graphica.cxx"
+	B = "CairoDL.cxx"
+	C = "DeviceCairo.cxx"
+}
