@@ -1,0 +1,11 @@
+CoClassis = "Communalis"
+CoNomen = "ESSE Modulus Formationum"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "formationes"
+CoModuliRequisiti { A = "cor" B = "compressio" }
+CoCompila {
+	A = "Language.cxx"
+	B = "Registry.cxx"
+	C = "StringTable.cxx"
+}

@@ -41,7 +41,6 @@ CoCompila {
 	GI = "Storage/Compression.cpp"
 	GJ = "Storage/JSON.cpp"
 	GK = "Storage/Object.cpp"
-	GL = "Storage/SubbyteCoding.cpp"
 	HA = "Graphics/Graphics.cpp"
 	HB = "Graphics/GraphicsBase.cpp"
 	HC = "Graphics/GraphicsHelper.cpp"

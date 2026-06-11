@@ -1,0 +1,12 @@
+CoClassis = "Codex"
+CoNomen = "ESSE Codificator Formati Interni"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "formatio-imaginum"
+CoModuliRequisiti { A = "cor" B = "compressio" C = "imagines" }
+CoCodicemDefinit {
+	A = "imagines:ESSE.Formationes.VolumeCodec"
+}
+CoCompila {
+	A = "Formatio-Imaginum.cxx"
+}

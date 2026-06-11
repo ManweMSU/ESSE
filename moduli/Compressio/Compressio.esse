@@ -1,0 +1,11 @@
+CoClassis = "Communalis"
+CoNomen = "ESSE Modulus Compressionis"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "compressio"
+CoModuliRequisiti { A = "cor" }
+CoCompila {
+	A = "BitStream.cxx"
+	B = "BlockCompression.cxx"
+	C = "ChainCompression.cxx"
+}

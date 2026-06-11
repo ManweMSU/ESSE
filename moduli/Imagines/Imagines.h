@@ -20,7 +20,7 @@ namespace ESSE
 		constexpr const unichar8 * ImageFormatWindowsIcon		= "ICO";
 		constexpr const unichar8 * ImageFormatWindowsCursor		= "CUR";
 		constexpr const unichar8 * ImageFormatAppleIcon			= "ICNS";
-		constexpr const unichar8 * ImageFormatEngine			= "EIWV";
+		constexpr const unichar8 * ImageFormatESSE				= "EFIE";
 
 		namespace EncoderOptions
 		{

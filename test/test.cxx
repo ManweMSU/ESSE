@@ -4,6 +4,8 @@
 #include <EngineRuntime.h>
 #include <Imagines/Imagines.h>
 
+#include <Formationes/Formationes.h>
+
 using namespace Engine;
 
 class HDLR : public ESSE::IO::IConsoleSessionEventHandler
@@ -15,6 +17,19 @@ public:
 		con->SendEvent(uint(event), 0);
 	}
 };
+
+void ListRegistry(ESSE::Formationes::RegistryNode * node, ESSE::IO::Console & console, const ESSE::string & prefix)
+{
+	for (auto & n : node->GetSubnodes()) {
+		auto sn = node->OpenNode(n);
+		console.WriteLineFormatted(prefix + n + U":");
+		ListRegistry(sn, console, prefix + U"  ");
+	}
+	for (auto & v : node->GetValues()) {
+		auto vv = node->GetValueString(v);
+		console.WriteLineFormatted(prefix + v + U" = " + vv);
+	}
+}
 
 int Main(void)
 {

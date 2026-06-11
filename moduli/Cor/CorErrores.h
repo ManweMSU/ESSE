@@ -43,5 +43,48 @@ namespace ESSE
 			constexpr uintptr CreateFailure			= 0x015;
 			constexpr uintptr OpenFailure			= 0x016;
 		};
+		namespace SuberrorDL
+		{
+			constexpr uintptr Success				= 0x000;
+			constexpr uintptr ModuleNotFound		= 0x001;
+			constexpr uintptr InvalidImageFormat	= 0x002;
+			constexpr uintptr InvalidFunctionFormat	= 0x003;
+			constexpr uintptr NoDedicatedVersion	= 0x004;
+			constexpr uintptr SymbolRedefinition	= 0x005;
+			constexpr uintptr LinkageFailure		= 0x006;
+			constexpr uintptr InvalidLocalImport	= 0x007;
+			constexpr uintptr LibraryNotFound		= 0x008;
+			constexpr uintptr InvalidLibraryImport	= 0x009;
+			constexpr uintptr AllocationFailure		= 0x00A;
+			constexpr uintptr NoEntryPoint			= 0x00B;
+			constexpr uintptr InvalidModuleVersion	= 0x00C;
+			constexpr uintptr ModuleCorruption		= 0x00D;
+			constexpr uintptr UntrustedModule		= 0x00E;
+		};
+		namespace SuberrorNetwork
+		{
+			constexpr uintptr Success				= 0x000;
+			constexpr uintptr Unknown				= 0x001;
+			constexpr uintptr AddressAlreadyIsUse	= 0x002;
+			constexpr uintptr AddressIsNotProvided	= 0x003;
+			constexpr uintptr DomainUnavailable		= 0x004;
+			constexpr uintptr MachineUnreachable	= 0x005;
+			constexpr uintptr SubnetUnreachable		= 0x006;
+			constexpr uintptr ConnectionRefused		= 0x007;
+			constexpr uintptr ConnectionReset		= 0x008;
+			constexpr uintptr InvalidProtocol		= 0x009;
+			constexpr uintptr RequestTimedOut		= 0x00A;
+			constexpr uintptr SecurityLayerError	= 0x00B;
+			constexpr uintptr UnresolvedDomainName	= 0x00C;
+		};
+		namespace SuberrorRPC
+		{
+			constexpr uintptr Success				= 0x000;
+			constexpr uintptr Unknown				= 0x001;
+			constexpr uintptr InvalidObjectHandle	= 0x002;
+			constexpr uintptr InvalidSelector		= 0x003;
+			constexpr uintptr SerializationError	= 0x004;
+			constexpr uintptr TransportLayerError	= 0x005;
+		}
 	}
 }

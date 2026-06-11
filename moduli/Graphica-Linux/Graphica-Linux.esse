@@ -6,7 +6,7 @@ CoIndentitas = "graphica-linux"
 CoSystema { A = "Linux" }
 CoImplantatioAbstractionis = "graphica"
 CoImplantatioDefalta = true
-CoModuliRequisiti { A = "cor" B = "graphica" }
+CoModuliRequisiti { A = "cor" B = "graphica" C = "formationes" }
 CoDefini {
 	ESSE_MODULUS_GRAPHICA_VULKAN = true
 }

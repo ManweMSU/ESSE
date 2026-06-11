@@ -286,7 +286,7 @@ namespace ESSE
 			Element * _left, * _right, * _parent;
 			E _value;
 			bool _black;
-			int Count(void) const noexcept { int result = 1; if (_left) result += _left->Count(); if (_right) result += _right->Count(); return result; }
+			uintptr Count(void) const noexcept { uintptr result = 1; if (_left) result += _left->Count(); if (_right) result += _right->Count(); return result; }
 			void Destruct(void) noexcept { if (_left) _left->Destruct(); if (_right) _right->Destruct(); delete this; }
 			Element(const E & src) : _left(0), _right(0), _parent(0), _value(src), _black(false) {}
 			Element(const Element & src, Element * new_root) : _value(src._value), _parent(new_root), _black(src._black)
@@ -836,7 +836,7 @@ namespace ESSE
 		Element * GetLast(void) noexcept { auto e = GetRoot(); while (e && e->GetRight()) e = e->GetRight(); return e; }
 		bool IsEmpty(void) const noexcept { return !_root; }
 
-		int Count(void) const noexcept { return _root ? _root->Count() : 0; }
+		uintptr Count(void) const noexcept { return _root ? _root->Count() : 0; }
 		const Element * ElementAt(int index) const noexcept
 		{
 			auto e = GetFirst();

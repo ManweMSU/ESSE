@@ -40,7 +40,7 @@ namespace Engine
 				else if (fmt == Codec::ImageFormatWindowsIcon) return ESSE::Picturae::ImageFormatWindowsIcon;
 				else if (fmt == Codec::ImageFormatWindowsCursor) return ESSE::Picturae::ImageFormatWindowsCursor;
 				else if (fmt == Codec::ImageFormatAppleIcon) return ESSE::Picturae::ImageFormatAppleIcon;
-				else if (fmt == Codec::ImageFormatEngine) return ESSE::Picturae::ImageFormatEngine;
+				else if (fmt == Codec::ImageFormatEngine) return ESSE::Picturae::ImageFormatESSE;
 				else return static_cast<const ESSE::unichar32 *>(fmt);
 			}
 			static string _get_ert_format(const ESSE::ucs1_string & fmt)
@@ -55,7 +55,7 @@ namespace Engine
 				else if (fmt == ESSE::Picturae::ImageFormatWindowsIcon) return Codec::ImageFormatWindowsIcon;
 				else if (fmt == ESSE::Picturae::ImageFormatWindowsCursor) return Codec::ImageFormatWindowsCursor;
 				else if (fmt == ESSE::Picturae::ImageFormatAppleIcon) return Codec::ImageFormatAppleIcon;
-				else if (fmt == ESSE::Picturae::ImageFormatEngine) return Codec::ImageFormatEngine;
+				else if (fmt == ESSE::Picturae::ImageFormatESSE) return Codec::ImageFormatEngine;
 				else return static_cast<const ESSE::unichar8 *>(fmt);
 			}
 		public:
