@@ -39,6 +39,8 @@ namespace esse {
 				if (paths) for (auto & n : paths->GetValues()) data_files_list.InsertLast(ExpandPath(esse_root + L"/" + paths->GetValueString(n)));
 				paths = ioconf->OpenNode(L"Tituli");
 				if (paths) for (auto & n : paths->GetValues()) include_list.InsertLast(ExpandPath(esse_root + L"/" + paths->GetValueString(n)));
+				paths = ioconf->OpenNode(L"Inire");
+				if (paths) for (auto & n : paths->GetValues()) init_list.InsertLast(ExpandPath(esse_root + L"/" + paths->GetValueString(n)));
 			} catch (...) {
 				console->SetTextColor(ConsoleColor::Red);
 				console->WriteLine(L"Error initializationis subsystemae inponendi/exponendi.");

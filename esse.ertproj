@@ -2,20 +2,25 @@
 	A = "constructor/esse.cxx"
 	B = "constructor/ioss.cxx"
 	C = "constructor/kernel.cxx"
-	D = "constructor/esse.loc.ertbs"
-	E = "constructor/esse_cc.cxx"
-	F = "constructor/esse_scaenaria.cxx"
-	G = "constructor/esse_rsrc.cxx"
-	H = "constructor/esse_link.cxx"
+	D = "constructor/esse_cc.cxx"
+	E = "constructor/esse_scaenaria.cxx"
+	F = "constructor/esse_rsrc.cxx"
+	G = "constructor/esse_link.cxx"
+	H = "constructor/esse_reconf.cxx"
 }
-Attachments {
-	A {
-		From = "constructor/esse.loc.ini"
-		To = "esse.loc.ini"
+"-Debug" {
+	CompileList {
+		AA = "constructor/esse.loc.ertbs"
 	}
-	B {
-		From = "constructor/esse.ini"
-		To = "esse.ini"
+	Attachments {
+		A {
+			From = "constructor/esse.loc.ini"
+			To = "esse.loc.ini"
+		}
+		B {
+			From = "constructor/esse.ini"
+			To = "esse.ini"
+		}
 	}
 }
 UseVersionDefines = true
@@ -26,5 +31,5 @@ VersionInformation {
 	CompanyName = "Engine Software"
 	Copyright = "© Engine Software. 2026"
 	InternalName = "esse"
-	Version = "2.99.4.11"
+	Version = "2.99.5.13"
 }

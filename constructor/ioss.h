@@ -12,7 +12,7 @@ namespace esse {
 			Engine::SafePointer<Engine::Storage::StringTable> localization;
 			Engine::SafePointer<Engine::IO::Console> console;
 			Engine::handle standard_input, standard_output;
-			Engine::Volumes::List<Engine::ImmutableString> module_search_list, include_list, data_files_list;
+			Engine::Volumes::List<Engine::ImmutableString> module_search_list, include_list, data_files_list, init_list;
 
 			io_context(void);
 			~io_context(void);

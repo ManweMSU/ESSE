@@ -386,10 +386,15 @@ namespace ESSE
 				for (uintptr i = 0; i < full.GetLength(); i++) {
 					if (full[i] == U'/' || full[i] == U'\\') {
 						auto subpath = full.Substring(0, i);
-						CreateDirectory(subpath, ectx);
-						if (ErrorTest(ectx)) return;
+						if (subpath.GetLength()) {
+							CreateDirectory(subpath, ectx);
+							if (ectx.error_code == Errores::ErrorIO && ectx.error_subcode == Errores::SuberrorIO::FileExists) ErrorClear(ectx);
+							if (ErrorTest(ectx)) return;
+						}
 					}
 				}
+				CreateDirectory(full, ectx);
+				if (ectx.error_code == Errores::ErrorIO && ectx.error_subcode == Errores::SuberrorIO::FileExists) ErrorClear(ectx);
 			ESSE_TRY_OUTRO()
 		}
 		void RemoveEntireDirectory(const string & path, ErrorContext & ectx) noexcept

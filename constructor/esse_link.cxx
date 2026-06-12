@@ -60,7 +60,7 @@ namespace esse {
 			try {
 				SafePointer<FileStream> src = new FileStream(transient_output, AccessRead, OpenExisting);
 				SafePointer<FileStream> dest = new FileStream(state->output_exec_path, AccessWrite, CreateAlways);
-				Unix::SetFileAccessRights(dest->Handle(), Unix::AccessRightAll, Unix::AccessRightReadOnly, Unix::AccessRightReadOnly);
+				try { Unix::SetFileAccessRights(dest->Handle(), Unix::AccessRightAll, Unix::AccessRightReadOnly, Unix::AccessRightReadOnly); } catch (...) {}
 				src->CopyTo(dest);
 			} catch (...) {
 				context.build_status_notify(input, build_tool_status::failed, 0, 0, state->io->localized(224));
@@ -72,7 +72,7 @@ namespace esse {
 				SafePointer<FileStream> src = new FileStream(a.source_path, AccessRead, OpenExisting);
 				SafePointer<FileStream> dest = new FileStream(dest_path, AccessWrite, CreateAlways);
 				auto src_perm = Unix::GetFileUserAccessRights(src->Handle());
-				Unix::SetFileAccessRights(dest->Handle(), src_perm, src_perm & Unix::AccessRightReadOnly, src_perm & Unix::AccessRightReadOnly);
+				try { Unix::SetFileAccessRights(dest->Handle(), src_perm, src_perm & Unix::AccessRightReadOnly, src_perm & Unix::AccessRightReadOnly); } catch (...) {}
 				src->CopyTo(dest);
 			} catch (...) {
 				context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(225), a.source_path));

@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "ioss.h"
+#include "esse_reconf.h"
 
 using namespace Engine;
 using namespace Engine::IO;
@@ -171,10 +172,7 @@ int Main(void)
 		}
 		if (state.input.Length() || state.reconfigure || state.informative) {
 			if (state.reconfigure) {
-
-				// TODO: IMPLEMENT AUTOCONFIGURATION
-				// bool reconfigure = false;
-
+				if (!esse::constructor::reconfigure(state.root_configuration, io)) return -1;
 			} else {
 				esse::constructor::build_state build;
 				if (!esse::constructor::build_state_initialize(build, state.root_configuration, io)) return -1;

@@ -1,0 +1,19 @@
+Compila {
+	A = "esse-converte.cxx"
+}
+Moduli {
+	A = "cor"
+	B = "imagines"
+	C = "formationes"
+	D = "consolatorium"
+}
+IndentitasApplicationis = "ESSE.Convertor"
+IndentitasCreatoris = "EngineSoftware"
+CreaMetaDefinitiones = true
+Meta {
+	NomenApplicationis = "Engine Constructor SubSystemae - Convertor"
+	CreatorApplicationis = "Engine Software"
+	JuraExempli = "© Engine Software. 2026"
+	NomenInternum = "esse-converte"
+	VersioApplicationis = "2.0.0.1"
+}
