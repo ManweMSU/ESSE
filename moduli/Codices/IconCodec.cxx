@@ -669,7 +669,7 @@ namespace ESSE
 						} else return false;
 					} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 					return false;
-				ESSE_TRY_OUTRO()
+				ESSE_TRY_OUTRO(false)
 			}
 			Codices::CodecIOFunction IconCodec = IconCodecI;
 		}

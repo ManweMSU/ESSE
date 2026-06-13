@@ -24,10 +24,10 @@ mkdir bin
 resurrect/_bin/esse -R bin/esse.ini --reconfigura -N || { echo "Reconfiguratio falsa."; exit 3; }
 resurrect/_bin/esse -R bin/esse.ini esse.ertproj -N || { echo "Compilatio ultima ESSE falsa."; exit 4; }
 resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -N || { echo "Compilatio ultima convertoris falsa."; exit 4; }
-ESSE_EXEC=`resurrect/_bin/esse -R bin/esse.ini esse.ertproj -OSE`
+ESSE_CONS_EXEC=`resurrect/_bin/esse -R bin/esse.ini esse.ertproj -OSE`
 ESSE_CONV_EXEC=`resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -OSE`
 cp resurrect/esse.loc.ini bin/esse.loc.ini
-cp $ESSE_EXEC bin/esse
+cp $ESSE_CONS_EXEC bin/esse
 cp $ESSE_CONV_EXEC bin/esse-converte
 mkdir bin/esse.loc
 mkdir bin/esse.conv.loc
@@ -39,3 +39,5 @@ rm -rf resurrect/_obj
 rm -rf resurrect/_bin
 rm -rf _build
 rm -rf convertor/_build
+echo "Resurrectum bene est!"
+bin/esse -NF

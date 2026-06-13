@@ -8,4 +8,5 @@ CoCompila {
 	A = "Language.cxx"
 	B = "Registry.cxx"
 	C = "StringTable.cxx"
+	D = "Archive.cxx"
 }

@@ -1080,7 +1080,7 @@ namespace ESSE
 					} else return false;
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 				return false;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		bool JpegCodecI(Codices::CodecIO mode, void * io, ErrorContext & ectx) noexcept
 		{
@@ -1126,7 +1126,7 @@ namespace ESSE
 					} else return false;
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 				return false;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		bool TiffCodecI(Codices::CodecIO mode, void * io, ErrorContext & ectx) noexcept
 		{
@@ -1168,7 +1168,7 @@ namespace ESSE
 					} else return false;
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 				return false;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		bool WebpCodecI(Codices::CodecIO mode, void * io, ErrorContext & ectx) noexcept
 		{
@@ -1215,7 +1215,7 @@ namespace ESSE
 					} else return false;
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 				return false;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		bool HeicCodecI(Codices::CodecIO mode, void * io, ErrorContext & ectx) noexcept
 		{
@@ -1261,7 +1261,7 @@ namespace ESSE
 					} else return false;
 				} else ErrorSet(ectx, Errores::ErrorNotImplemented);
 				return false;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		Codices::CodecIOFunction libpng_f = PngCodecI, libjpeg_f = JpegCodecI, libtiff_f = TiffCodecI;
 		Codices::CodecIOFunction libwebp_f = WebpCodecI, libheif_f = HeicCodecI;

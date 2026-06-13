@@ -715,7 +715,7 @@ namespace Engine
 			catch (...) { if (throw_on_syntax_error) throw InvalidFormatException(); }
 		}
 	}
-	constexpr widechar * Base64Digits = U"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	constexpr const widechar * Base64Digits = U"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	string ConvertToBase64(const void * data, int length)
 	{
 		auto src = reinterpret_cast<const uint8 *>(data);

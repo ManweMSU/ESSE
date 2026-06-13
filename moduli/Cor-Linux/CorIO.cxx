@@ -136,7 +136,7 @@ namespace ESSE
 		{
 			if (file == InvalidHandle) return InvalidHandle;
 			auto new_file = dup(HandleUnwrap(file));
-			if (new_file < 0) { ErrorSetPosix(ectx); return; }
+			if (new_file < 0) { ErrorSetPosix(ectx); return 0; }
 			return HandleWrap(new_file);
 		}
 		handle CreateFile(const string & path, uint access, FileCreationMode mode, ErrorContext & ectx) noexcept
@@ -365,7 +365,7 @@ namespace ESSE
 					if (fd < 0 && errno != EINTR) { ErrorSetPosix(ectx); return FileType::Unknown; }
 				} while (fd < 0);
 				struct stat fs;
-				if (fstat(fd, &fs) < 0) { ErrorSetPosix(ectx); close(fd); return; }
+				if (fstat(fd, &fs) < 0) { ErrorSetPosix(ectx); close(fd); return FileType::Unknown; }
 				close(fd);
 				if ((fs.st_mode & S_IFMT) == S_IFREG) return FileType::Regular;
 				else if ((fs.st_mode & S_IFMT) == S_IFDIR) return FileType::Directory;
@@ -383,7 +383,7 @@ namespace ESSE
 					if (fd < 0 && errno != EINTR) { ErrorSetPosix(ectx); return FileType::Unknown; }
 				} while (fd < 0);
 				struct stat fs;
-				if (fstat(fd, &fs) < 0) { ErrorSetPosix(ectx); close(fd); return; }
+				if (fstat(fd, &fs) < 0) { ErrorSetPosix(ectx); close(fd); return FileType::Unknown; }
 				close(fd);
 				if ((fs.st_mode & S_IFMT) == S_IFREG) return FileType::Regular;
 				else if ((fs.st_mode & S_IFMT) == S_IFDIR) return FileType::Directory;

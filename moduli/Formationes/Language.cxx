@@ -100,7 +100,7 @@ namespace ESSE
 				else desc.line_position_from = 0;
 				if (length > 0) desc.line_range_length = length;
 				else desc.line_range_length = 0;
-
+				return true;
 			} catch (...) { return false; }
 		}
 		bool TokenStream::ReadToken(Token & token) noexcept

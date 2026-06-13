@@ -85,7 +85,7 @@ namespace ESSE
 		virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"Process"; ESSE_TRY_OUTRO(string()) }
 		virtual void Wait(void) noexcept override { _wait->Wait(); }
 		virtual bool WaitFor(uint32 ms) noexcept override { return _wait->WaitFor(ms); }
-		virtual bool Terminate(void) noexcept override { _local_sync->Wait(); if (_pid >= 0) kill(_pid, SIGKILL); _local_sync->Open(); }
+		virtual bool Terminate(void) noexcept override { int status = -1; _local_sync->Wait(); if (_pid >= 0) status = kill(_pid, SIGKILL); _local_sync->Open(); return status >= 0; }
 		virtual bool Exited(void) noexcept override { _local_sync->Wait(); auto result = _exited; _local_sync->Open(); return result; }
 		virtual int GetExitCode(void) noexcept override { _local_sync->Wait(); auto result = _exit_code; _local_sync->Open(); return result; }
 		virtual int GetPID(void) noexcept override { _local_sync->Wait(); auto result = _pid; _local_sync->Open(); return result; }

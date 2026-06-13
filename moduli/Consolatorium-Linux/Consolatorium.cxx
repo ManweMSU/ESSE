@@ -297,7 +297,7 @@ namespace ESSE
 						return true;
 					} else {
 						auto status = _escaped_key_code_read(desc, ectx);
-						if (status || ErrorTest(ectx)) return true;
+						if (status || ErrorTest(ectx)) return true; else return false;
 					}
 				} else if (chr == 0x7F) {
 					desc.event = ConsoleInputEvent::KeyInput;

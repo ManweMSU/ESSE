@@ -87,14 +87,14 @@ namespace ESSE
 				hdr.msg_flags = 0;
 				while (true) {
 					auto status = recvmsg(_socket, &hdr, 0);
-					if (status < 0 && errno != EINTR) { Linux::ErrorSetPosix(ectx); return; }
+					if (status < 0 && errno != EINTR) { Linux::ErrorSetPosix(ectx); return 0; }
 					else if (status >= 0) break;
 				}
-				if (hdr.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return; }
+				if (hdr.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return 0; }
 				auto ctl_hdr = CMSG_FIRSTHDR(&hdr);
-				if (!ctl_hdr) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return; }
-				if (ctl_hdr->cmsg_len < sizeof(struct cmsghdr) + sizeof(int)) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return; }
-				if (ctl_hdr->cmsg_level != SOL_SOCKET || ctl_hdr->cmsg_type != SCM_RIGHTS) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return; }
+				if (!ctl_hdr) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return 0; }
+				if (ctl_hdr->cmsg_len < sizeof(struct cmsghdr) + sizeof(int)) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return 0; }
+				if (ctl_hdr->cmsg_level != SOL_SOCKET || ctl_hdr->cmsg_type != SCM_RIGHTS) { ErrorSet(ectx, Errores::ErrorInvalidFormat); return 0; }
 				int fd = *reinterpret_cast<int *>(&CMSG_DATA(ctl_hdr));
 				return reinterpret_cast<handle>(intptr(fd));
 			}

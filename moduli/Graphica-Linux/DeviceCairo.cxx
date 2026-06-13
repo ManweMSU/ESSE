@@ -371,7 +371,7 @@ namespace ESSE
 				Retain(); return this;
 			} else if (cls == Classes.IDeviceContextFactory2D) {
 				_parent->Retain(); return _parent;
-			} else ErrorSet(ectx, Errores::ErrorNotImplemented);
+			} else { ErrorSet(ectx, Errores::ErrorNotImplemented); return 0; }
 		}
 		const void * CairoDevice::GetType(void) noexcept { return Classes.IDeviceContext2D; }
 		void CairoDevice::GetImplementationInfo(string & tech, uint32 & version_major, uint32 & version_minor) noexcept

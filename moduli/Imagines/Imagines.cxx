@@ -252,7 +252,7 @@ namespace ESSE
 			}
 			if (dest && result) *dest = local;
 			return result;
-			ESSE_TRY_OUTRO()
+			ESSE_TRY_OUTRO(false)
 		}
 		bool GetEncodeMode(Codices::CodecIOEncodeModes * dest, const unichar8 * format)
 		{

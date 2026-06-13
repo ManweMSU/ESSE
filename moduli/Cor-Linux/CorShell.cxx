@@ -41,7 +41,7 @@ namespace ESSE
 					if (!ErrorTest(ectx)) return true;
 				}
 				return false;
-			}
+			} else return false;
 		} catch (...) { return false; }
 	}
 }

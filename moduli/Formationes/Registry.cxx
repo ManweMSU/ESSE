@@ -418,7 +418,7 @@ namespace ESSE
 					RegistryValue * value;
 					auto node = ResolveNode(path.GetData(), i);
 					if (!node) return 0;
-					if (!node->FindValue(path.GetData() + i, path.GetLength() - i, &value, 0)) return 0;
+					if (!node->FindValue(path.GetData() + i + 1, path.GetLength() - i - 1, &value, 0)) return 0;
 					return value;
 				} else {
 					RegistryValue * value;
@@ -433,7 +433,7 @@ namespace ESSE
 					const RegistryValue * value;
 					auto node = ResolveNode(path.GetData(), i);
 					if (!node) return 0;
-					if (!node->FindValue(path.GetData() + i, path.GetLength() - i, &value, 0)) return 0;
+					if (!node->FindValue(path.GetData() + i + 1, path.GetLength() - i - 1, &value, 0)) return 0;
 					return value;
 				} else {
 					const RegistryValue * value;

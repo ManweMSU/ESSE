@@ -150,33 +150,39 @@ namespace ESSE
 	}
 	uintptr MemoryStream::WriteE(const void * data, uintptr size, ErrorContext & ectx) noexcept
 	{
-		uintptr rem = _data->GetLength() - _pointer;
-		if (size > rem) {
-			constexpr uintptr max_intptr = uintptr(intptr(-1)) >> 1;
-			if (size > max_intptr - _pointer) throw InputOutputException(Errores::SuberrorIO::FileTooLarge);
-			_data->SetLength(_pointer + size);
-		}
-		Memory::MemoryCopy(_data->GetBuffer() + _pointer, data, size);
-		_pointer += size;
-		return size;
+		ESSE_TRY_INTRO
+			uintptr rem = _data->GetLength() - _pointer;
+			if (size > rem) {
+				constexpr uintptr max_intptr = uintptr(intptr(-1)) >> 1;
+				if (size > max_intptr - _pointer) throw InputOutputException(Errores::SuberrorIO::FileTooLarge);
+				_data->SetLength(_pointer + size);
+			}
+			Memory::MemoryCopy(_data->GetBuffer() + _pointer, data, size);
+			_pointer += size;
+			return size;
+		ESSE_TRY_OUTRO(0)
 	}
 	uint64 MemoryStream::SeekE(int64 position, SeekOrigin org, ErrorContext & ectx) noexcept
 	{
-		int64 newpos = position;
-		if (org == SeekOrigin::Current) newpos += int64(_pointer);
-		else if (org == SeekOrigin::End) newpos += int64(_data->GetLength());
-		else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
-		if (newpos < 0 || newpos > int64(_data->GetLength())) throw InvalidArgumentException();
-		_pointer = newpos;
-		return _pointer;
+		ESSE_TRY_INTRO
+			int64 newpos = position;
+			if (org == SeekOrigin::Current) newpos += int64(_pointer);
+			else if (org == SeekOrigin::End) newpos += int64(_data->GetLength());
+			else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
+			if (newpos < 0 || newpos > int64(_data->GetLength())) throw InvalidArgumentException();
+			_pointer = newpos;
+			return _pointer;
+		ESSE_TRY_OUTRO(0)
 	}
 	uint64 MemoryStream::GetLengthE(ErrorContext & ectx) noexcept { return _data->GetLength(); }
 	void MemoryStream::SetLengthE(const uint64 & length, ErrorContext & ectx) noexcept
 	{
-		constexpr uint64 max_intptr = uintptr(intptr(-1)) >> 1;
-		if (length > max_intptr) throw InvalidArgumentException();
-		_data->SetLength(length);
-		if (_pointer > length) _pointer = length;
+		ESSE_TRY_INTRO
+			constexpr uint64 max_intptr = uintptr(intptr(-1)) >> 1;
+			if (length > max_intptr) throw InvalidArgumentException();
+			_data->SetLength(length);
+			if (_pointer > length) _pointer = length;
+		ESSE_TRY_OUTRO()
 	}
 	void MemoryStream::FlushE(ErrorContext & ectx) noexcept {}
 	DataBlock * MemoryStream::GetStorage(void) noexcept { return _data; }
@@ -199,18 +205,20 @@ namespace ESSE
 	uintptr StaticMemoryStream::WriteE(const void * data, uintptr size, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); return 0; }
 	uint64 StaticMemoryStream::SeekE(int64 position, SeekOrigin org, ErrorContext & ectx) noexcept
 	{
-		int64 newpos = position;
-		if (org == SeekOrigin::Current) newpos += int64(_pointer);
-		else if (org == SeekOrigin::End) newpos += int64(_size);
-		else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
-		if (newpos < 0 || newpos > int64(_size)) throw InvalidArgumentException();
-		_pointer = newpos;
-		return _pointer;
+		ESSE_TRY_INTRO
+			int64 newpos = position;
+			if (org == SeekOrigin::Current) newpos += int64(_pointer);
+			else if (org == SeekOrigin::End) newpos += int64(_size);
+			else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
+			if (newpos < 0 || newpos > int64(_size)) throw InvalidArgumentException();
+			_pointer = newpos;
+			return _pointer;
+		ESSE_TRY_OUTRO(0)
 	}
 	uint64 StaticMemoryStream::GetLengthE(ErrorContext & ectx) noexcept { return _size; }
 	void StaticMemoryStream::SetLengthE(const uint64 & length, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); }
 	void StaticMemoryStream::FlushE(ErrorContext & ectx) noexcept {}
-	const void * StaticMemoryStream::GetData(void) const { return _data; }
+	const void * StaticMemoryStream::GetData(void) const noexcept { return _data; }
 
 	Substream::Substream(Stream * stream, uint64 offset, uint64 size) : _inner(stream), _begin(offset), _end(offset + size), _size(size), _pointer(0) {}
 	oref<Substream> Substream::Create(Stream * stream, uint64 offset, uint64 size) { return owrap(new Substream(stream, offset, size)); }
@@ -234,13 +242,15 @@ namespace ESSE
 	uintptr Substream::WriteE(const void * data, uintptr size, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); }
 	uint64 Substream::SeekE(int64 position, SeekOrigin org, ErrorContext & ectx) noexcept
 	{
-		int64 newpos = position;
-		if (org == SeekOrigin::Current) newpos += int64(_pointer);
-		else if (org == SeekOrigin::End) newpos += int64(_size);
-		else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
-		if (newpos < 0 || newpos > int64(_size)) throw InvalidArgumentException();
-		_pointer = newpos;
-		return _pointer;
+		ESSE_TRY_INTRO
+			int64 newpos = position;
+			if (org == SeekOrigin::Current) newpos += int64(_pointer);
+			else if (org == SeekOrigin::End) newpos += int64(_size);
+			else if (org != SeekOrigin::Begin) throw InvalidArgumentException();
+			if (newpos < 0 || newpos > int64(_size)) throw InvalidArgumentException();
+			_pointer = newpos;
+			return _pointer;
+		ESSE_TRY_OUTRO(0)
 	}
 	uint64 Substream::GetLengthE(ErrorContext & ectx) noexcept { return _size; }
 	void Substream::SetLengthE(const uint64 & length, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); }
