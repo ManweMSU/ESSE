@@ -118,5 +118,12 @@ namespace ESSE
 			ErrorThrow(ectx);
 			return result;
 		}
+		oref<ISharedMemory> OpenSharedMemory(handle object, uintptr size)
+		{
+			ErrorContext ectx; ErrorClear(ectx);
+			auto result = OpenSharedMemory(object, size, ectx);
+			ErrorThrow(ectx);
+			return result;
+		}
 	}
 }

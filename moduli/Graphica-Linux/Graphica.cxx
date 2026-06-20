@@ -1,5 +1,6 @@
 #include <Graphica/Graphica.h>
 #include "DeviceCairo.h"
+#include "Vulkan.h"
 
 namespace ESSE
 {
@@ -215,12 +216,7 @@ namespace ESSE
 	namespace Graphica
 	{
 		oref<IDeviceContextFactory2D> _common_factory_2d;
-		oref<IDeviceFactory> CreateDeviceFactory(ErrorContext & ectx) noexcept
-		{
-			// TODO: IMPLEMENT
-			ErrorSet(ectx, Errores::ErrorNotImplemented);
-			return 0;
-		}
+		oref<IDeviceFactory> CreateDeviceFactory(ErrorContext & ectx) noexcept { return Vulkan::CreateDeviceFactory(ectx); }
 		oref<IDeviceContextFactory2D> CreateDeviceContextFactory2D(ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO

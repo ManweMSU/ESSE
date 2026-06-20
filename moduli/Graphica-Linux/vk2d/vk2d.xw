@@ -1,0 +1,140 @@
+spatium vk2d {
+	structura vertex { frac4 color; frac2 pos; frac2 uv; }
+	structura fenestra { int x; int y; int lat; int alt; }
+	structura configuratio_prima {
+		int sin; int sup; int dex; int inf;
+		int du; int dv; int index; frac valor;
+	}
+	structura configuratio_gradi {
+		frac2 ab; frac2 ad;
+		frac2 norm; frac2 long;
+	}
+	structura configuratio_taleae {
+		int sin; int sup; int dex; int inf;
+		int isin; int isup; int idex; int iinf;
+		int tsin; int tsup; int tdex; int tinf;
+	}
+}
+functio vertex v_primus(
+	vk2d.fenestra fen : constati[0], vk2d.configuratio_prima conf : constati[1],
+	series[vk2d.vertex] vert : series[0], nint vid : vertex, ~frac4 pos : positus,
+	~frac4 color : interpolire_perspective[0], ~frac2 uv : interpolire_perspective[1]
+) {
+	var vd = vert[vid];
+	color = vd.color * conf.valor;
+	uv = vd.uv * frac2(conf.du, conf.dv);
+	var x = frac(conf.sin) + frac(conf.dex - conf.sin) * vd.pos.x - fen.x;
+	var y = frac(conf.sup) + frac(conf.inf - conf.sup) * vd.pos.y - fen.y;
+	pos.x = 2.0 * (x / fen.lat) - 1.0;
+	pos.y = 2.0 * (y / fen.alt) - 1.0;
+	pos.z = 0.0;
+	pos.w = 1.0;
+}
+functio vertex v_gradi(
+	vk2d.fenestra fen : constati[0], vk2d.configuratio_gradi conf : constati[1],
+	series[vk2d.vertex] vert : series[0], nint vid : vertex, ~frac4 pos : positus,
+	~frac4 color : interpolire_perspective[0], ~frac2 uv : interpolire_perspective[1]
+) {
+	var vd = vert[vid];
+	color = vd.color;
+	uv = vd.uv;
+	var p = vd.pos.x;
+	var o = vd.pos.y;
+	si (p < 0.0) p = -conf.long.x;
+	alioqui si (p > 1.0) p = 1.0 + conf.long.x;
+	var c = math.interpoli(conf.ab, conf.ad, p) + o * conf.long.y * conf.norm;
+	var x = c.x - fen.x;
+	var y = c.y - fen.y;
+	pos.x = 2.0 * (x / fen.lat) - 1.0;
+	pos.y = 2.0 * (y / fen.alt) - 1.0;
+	pos.z = 0.0;
+	pos.w = 1.0;
+}
+functio vertex v_taleae(
+	vk2d.fenestra fen : constati[0], vk2d.configuratio_taleae conf : constati[1],
+	series[vk2d.vertex] vert : series[0], nint vid : vertex, ~frac4 pos : positus,
+	~frac2 uv : interpolire_perspective[0], ~frac4 talea : interpolire_nulle[1], ~frac4 ipos : interpolire_nulle[2]
+) {
+	var vd = vert[vid];
+	talea = (conf.tsin, conf.tsup, conf.tdex - conf.tsin, conf.tinf - conf.tsup);
+	ipos = (conf.isin, conf.isup, conf.idex - conf.isin, conf.iinf - conf.isup);
+	ipos.zw = talea.zw / ipos.zw;
+	uv.x = frac(conf.sin) + frac(conf.dex - conf.sin) * vd.pos.x - fen.x;
+	uv.y = frac(conf.sup) + frac(conf.inf - conf.sup) * vd.pos.y - fen.y;
+	pos.x = 2.0 * (uv.x / fen.lat) - 1.0;
+	pos.y = 2.0 * (uv.y / fen.alt) - 1.0;
+	pos.z = 0.0;
+	pos.w = 1.0;
+}
+functio vertex v_maculae(
+	vk2d.fenestra fen : constati[0], vk2d.configuratio_prima conf : constati[1],
+	series[vk2d.vertex] vert : series[0], nint vid : vertex, ~frac4 pos : positus,
+	~frac2 uv : interpolire_perspective[0], ~frac4 dim : interpolire_nulle[1]
+) {
+	var vd = vert[vid];
+	uv = vd.uv * frac2(conf.du, conf.dv);
+	dim = frac4(conf.du, conf.dv, conf.index, conf.valor);
+	var x = frac(conf.sin) + frac(conf.dex - conf.sin) * vd.pos.x - fen.x;
+	var y = frac(conf.sup) + frac(conf.inf - conf.sup) * vd.pos.y - fen.y;
+	pos.x = 2.0 * (x / fen.lat) - 1.0;
+	pos.y = 2.0 * (y / fen.alt) - 1.0;
+	pos.z = 0.0;
+	pos.w = 1.0;
+}
+functio punctum p_primus(
+	frac4 color : interpolire_perspective[0], frac2 uv : interpolire_perspective[1],
+	textura_2d[frac] tex : textura[0], ~frac4 resp : color
+) {
+	resp = color * tex[nint2(uv.x, uv.y), 0];
+}
+functio punctum p_primus_dua_alpha(
+	frac4 color : interpolire_perspective[0], frac2 uv : interpolire_perspective[1],
+	textura_2d[frac] tex : textura[0], textura_2d[frac] ind : textura[1], ~frac4 resp : color
+) {
+	resp = color * tex[nint2(uv.x, uv.y), 0] * ind[nint2(uv.x, uv.y), 0].a;
+}
+functio punctum p_primus_alpha_nulla(
+	frac4 color : interpolire_perspective[0], frac2 uv : interpolire_perspective[1],
+	textura_2d[frac] tex : textura[0], ~frac4 resp : color
+) {
+	resp = (color.xyz * tex[nint2(uv.x, uv.y), 0].xyz, 1.0);
+}
+functio punctum p_taleae(
+	frac2 uv : interpolire_perspective[0], frac4 talea : interpolire_nulle[1], frac4 ipos : interpolire_nulle[2],
+	textura_2d[frac] tex : textura[0], ~frac4 resp : color
+) {
+	resp = tex[nint2(
+		nint(talea.x) + nint((uv.x - ipos.x) * ipos.z) % nint(talea.z),
+		nint(talea.y) + nint((uv.y - ipos.y) * ipos.w) % nint(talea.w)
+	), 0];
+}
+functio punctum p_maculae(
+	frac2 uv : interpolire_perspective[0], frac4 dim : interpolire_nulle[1],
+	textura_2d[frac] tex : textura[0], ~frac4 resp : color
+) {
+	var radius = int(math.tectum(dim.w * 3.0));
+	var ss = dim.w * dim.w;
+	var norm = 1.0 / (ss * 6.2831853071795864);
+	var denum = -1.0 / (2.0 * ss);
+	var summa = frac4(0.0);
+	var div = 0.0;
+	per (int y = -radius; y <= radius; y++) per (int x = -radius; x <= radius; x++) {
+		var pos = uv + (x - 0.5, y - 0.5);
+		var iw1 = int2(math.solum(pos));
+		var iw2 = iw1 + 1;
+		var dw = pos - iw1;
+		si (iw1.x < 0) iw1.x = 0; alioqui si (iw1.x >= dim.x) iw1.x = dim.x - 1;
+		si (iw1.y < 0) iw1.y = 0; alioqui si (iw1.y >= dim.y) iw1.y = dim.y - 1;
+		si (iw2.x < 0) iw2.x = 0; alioqui si (iw2.x >= dim.x) iw2.x = dim.x - 1;
+		si (iw2.y < 0) iw2.y = 0; alioqui si (iw2.y >= dim.y) iw2.y = dim.y - 1;
+		var color00 = tex[iw1, dim.z];
+		var color01 = tex[(iw1.x, iw2.y), dim.z];
+		var color10 = tex[(iw2.x, iw1.y), dim.z];
+		var color11 = tex[iw2, dim.z];
+		var color = math.interpoli(math.interpoli(color00, color10, dw.x), math.interpoli(color01, color11, dw.x), dw.y);
+		var alt = norm * math.exp(denum * (x * x + y * y));
+		summa += color * alt;
+		div += alt;
+	}
+	resp = summa / div;
+}

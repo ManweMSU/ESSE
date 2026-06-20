@@ -170,8 +170,13 @@ namespace ESSE
 				} else if (mode == FileCreationMode::OpenExisting) {
 					_unlink = false;
 				} else throw InvalidArgumentException();
+				uint permissions = 0666;
+				if (!_path.GetLength()) {
+					_path = FormatString(U"esse-mem-%0-%1", getpid(), string(reinterpret_cast<void *>(this)));
+					permissions = 0;
+				}
 				while (true) {
-					_file = shm_open(_path, flags, 0666);
+					_file = shm_open(_path, flags, permissions);
 					if (_file < 0 && errno != EINTR) {
 						ErrorContext ectx; Linux::ErrorSetPosix(ectx);
 						throw CustomException(ectx);
@@ -196,6 +201,17 @@ namespace ESSE
 					}
 					_length = fs.st_size;
 				}
+			}
+			LinuxSharedMemory(handle object, uintptr size) : _pdata(MAP_FAILED), _unlink(false)
+			{
+				if (!size || object == IO::InvalidHandle) throw InvalidArgumentException();
+				_file = reinterpret_cast<intptr>(object);
+				struct stat fs;
+				if (fstat(_file, &fs) < 0) {
+					ErrorContext ectx; Linux::ErrorSetPosix(ectx);
+					throw CustomException(ectx);
+				}
+				_length = fs.st_size;
 			}
 			virtual ~LinuxSharedMemory(void) override { Unmap(); close(_file); if (_unlink) shm_unlink(_path); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"IPC Shared Memory"; ESSE_TRY_OUTRO(string()) }
@@ -223,6 +239,7 @@ namespace ESSE
 				return _pdata;
 			}
 			virtual void Unmap(void) noexcept override { if (_pdata != MAP_FAILED) { munmap(_pdata, _length); _pdata = MAP_FAILED; } }
+			virtual handle GetIOHandle(void) noexcept override { return reinterpret_cast<handle>(intptr(_file)); }
 		};
 		class LinuxSharedLock : public ISharedLock
 		{
@@ -278,6 +295,14 @@ namespace ESSE
 			ESSE_TRY_INTRO
 			oref<ISharedLock> result;
 			result.SetOwned(new LinuxSharedLock(lock_name));
+			return result;
+			ESSE_TRY_OUTRO(0)
+		}
+		oref<ISharedMemory> OpenSharedMemory(handle object, uintptr size, ErrorContext & ectx) noexcept
+		{
+			ESSE_TRY_INTRO
+			oref<ISharedMemory> result;
+			result.SetOwned(new LinuxSharedMemory(object, size));
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}

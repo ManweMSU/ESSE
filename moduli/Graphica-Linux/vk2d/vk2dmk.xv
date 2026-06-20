@@ -1,0 +1,30 @@
+﻿importa limae;
+
+functio nihil _() introitus iacit {
+	var in = semita("vk2d.egso").crea_limam(modus_limae.legere, modus_creatoris.aperi_praesens)^.lege_ordinem();
+	var ex = scriptio.codifica(semita("Vulkan2D.cxx").crea_limam(modus_limae.scribere, modus_creatoris.crea_semper), linea.codex.utf8);
+	ex^.scribe_lineam("#include \"Vulkan2D.h\"");
+	ex^.scribe_lineam();
+	ex^.scribe_lineam("namespace ESSE");
+	ex^.scribe_lineam("{");
+	ex^.scribe_lineam("\tnamespace Vulkan");
+	ex^.scribe_lineam("\t{");
+	ex^.scribe("\t\tunsigned char _shader_data[] = {");
+	per (var i : in^) {
+		si (i % 32 == 0) {
+			ex^.scribe_lineam();
+			ex^.scribe("\t\t\t");
+		} alioqui ex^.scribe(" ");
+		ex^.scribe(in^[i]);
+		ex^.scribe(",");
+	}
+	ex^.scribe_lineam();
+	ex^.scribe_lineam("\t\t};");
+	ex^.scribe_lineam("\t\tvoid GetShaders(const void ** pdata, uintptr * length)");
+	ex^.scribe_lineam("\t\t{");
+	ex^.scribe_lineam("\t\t\t*pdata = _shader_data;");
+	ex^.scribe_lineam("\t\t\t*length = sizeof(_shader_data);");
+	ex^.scribe_lineam("\t\t}");
+	ex^.scribe_lineam("\t}");
+	ex^.scribe_lineam("}");
+}

@@ -503,7 +503,7 @@ namespace ESSE
 		}
 		void CairoDevice::RenderPolyline(const double * px, const double * py, uint count, bool closed, Graphica::IBrush * brush, double width) noexcept
 		{
-			if (count < 2) return;
+			if (count < 2 || !brush) return;
 			Rectangle aabb(floor(px[0]), floor(py[0]), ceil(px[0]) + 1, ceil(py[0]) + 1);
 			_api->cairo_move_to(_context, px[0], py[0]);
 			for (uint i = 1; i < count; i++) {
@@ -525,7 +525,7 @@ namespace ESSE
 		}
 		void CairoDevice::RenderPolygon(const double * px, const double * py, uint count, Graphica::IBrush * brush) noexcept
 		{
-			if (count < 2) return;
+			if (count < 2 || !brush) return;
 			Rectangle aabb(floor(px[0]), floor(py[0]), ceil(px[0]) + 1, ceil(py[0]) + 1);
 			_api->cairo_move_to(_context, px[0], py[0]);
 			for (uint i = 1; i < count; i++) {

@@ -47,6 +47,7 @@ namespace ESSE
 			virtual uintptr GetLength(void) noexcept = 0;
 			virtual void * Map(uint vmem_attributes, ErrorContext & ectx) noexcept = 0;
 			virtual void Unmap(void) noexcept = 0;
+			virtual handle GetIOHandle(void) noexcept = 0;
 
 			string GetSegmentName(void);
 			void * Map(uint vmem_attributes);
@@ -65,11 +66,13 @@ namespace ESSE
 		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint mode, ErrorContext & ectx) noexcept;
 		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode mode, ErrorContext & ectx) noexcept;
 		oref<ISharedLock> CreateSharedLock(const string & lock_name, ErrorContext & ectx) noexcept;
+		oref<ISharedMemory> OpenSharedMemory(handle object, uintptr size, ErrorContext & ectx) noexcept;
 
 		oref<IConnection> Connect(const string & listener_name, uint mode);
 		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint mode);
 		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode mode);
 		oref<ISharedLock> CreateSharedLock(const string & lock_name);
+		oref<ISharedMemory> OpenSharedMemory(handle object, uintptr size);
 
 		void PurifyConnectionListener(const string & name) noexcept;
 		void PurifySharedMemory(const string & name) noexcept;

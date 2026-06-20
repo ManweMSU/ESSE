@@ -99,6 +99,10 @@ namespace ESSE
 		bool friend operator != (const oref & a, O * b) noexcept { return a._reference != b; }
 		bool friend operator == (O * a, const oref & b) noexcept { return a == b._reference; }
 		bool friend operator != (O * a, const oref & b) noexcept { return a != b._reference; }
+		bool friend operator <= (const oref & a, const oref & b) noexcept { return a._reference <= b._reference; }
+		bool friend operator >= (const oref & a, const oref & b) noexcept { return a._reference >= b._reference; }
+		bool friend operator < (const oref & a, const oref & b) noexcept { return a._reference < b._reference; }
+		bool friend operator > (const oref & a, const oref & b) noexcept { return a._reference > b._reference; }
 	};
 	template <class O> oref<O> owrap(O * o) noexcept { return oref<O>::CreateOwned(o); }
 }

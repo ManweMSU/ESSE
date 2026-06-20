@@ -7,6 +7,7 @@ CoSystema { A = "Linux" }
 CoImplantatioAbstractionis = "graphica"
 CoImplantatioDefalta = true
 CoModuliRequisiti { A = "cor" B = "graphica" C = "formationes" }
+CoTituli { A = "api" }
 CoDefini {
 	ESSE_MODULUS_GRAPHICA_VULKAN = true
 }
@@ -14,4 +15,6 @@ CoCompila {
 	A = "Graphica.cxx"
 	B = "CairoDL.cxx"
 	C = "DeviceCairo.cxx"
+	D = "Vulkan.cxx"
+	E = "Vulkan2D.cxx"
 }

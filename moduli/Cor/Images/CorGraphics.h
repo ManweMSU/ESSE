@@ -455,16 +455,17 @@ namespace ESSE
 			virtual bool EndCurrentPass(void) noexcept = 0;
 			virtual bool SubmitDeferredContext(IDeviceContext * context) noexcept = 0;
 			virtual void Flush(void) noexcept = 0;
+			virtual bool IsDeferred(void) noexcept = 0;
 
 			virtual void SetRenderingPipelineState(IPipelineState * state) noexcept = 0;
 			virtual void SetViewport(float top_left_x, float top_left_y, float width, float height, float min_depth, float max_depth) noexcept = 0;
 			virtual void SetVertexShaderResource(uint32 at, IDeviceResource * resource) noexcept = 0;
 			virtual void SetVertexShaderConstant(uint32 at, IBuffer * buffer) noexcept = 0;
-			virtual void SetVertexShaderConstant(uint32 at, const void * data, uint length) noexcept = 0;
+			virtual void SetVertexShaderConstantImmediate(uint32 at, const void * data, uint length) noexcept = 0;
 			virtual void SetVertexShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept = 0;
 			virtual void SetPixelShaderResource(uint32 at, IDeviceResource * resource) noexcept = 0;
 			virtual void SetPixelShaderConstant(uint32 at, IBuffer * buffer) noexcept = 0;
-			virtual void SetPixelShaderConstant(uint32 at, const void * data, uint length) noexcept = 0;
+			virtual void SetPixelShaderConstantImmediate(uint32 at, const void * data, uint length) noexcept = 0;
 			virtual void SetPixelShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept = 0;
 			virtual void SetIndexBuffer(IBuffer * index, IndexBufferFormat format) noexcept = 0;
 			virtual void SetStencilReferenceValue(uint8 ref) noexcept = 0;
@@ -480,7 +481,7 @@ namespace ESSE
 			virtual void QueryResourceData(const ResourceDataDesc & dest, IDeviceResource * src, const Index2 & subres, const Index3 & origin, const Index3 & size) noexcept = 0;
 
 			virtual bool AcquireSharedResource(IDeviceResource * rsrc) noexcept = 0;
-			virtual bool AcquireSharedResource(IDeviceResource * rsrc, uint32 timeout) noexcept = 0;
+			virtual bool TryAcquireSharedResource(IDeviceResource * rsrc, uint32 timeout) noexcept = 0;
 			virtual bool ReleaseSharedResource(IDeviceResource * rsrc) noexcept = 0;
 		};
 
