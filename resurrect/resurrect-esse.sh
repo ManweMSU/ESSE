@@ -18,7 +18,7 @@ resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     moduli/Graphica-Linux/ \
     moduli/Imagines/ \
     moduli/EngineRuntime/ \
-    I:moduli I:moduli/EngineRuntime J:resurrect/_obj O:resurrect/_bin/esse || { echo "Resurrectio ESSE falsa."; exit 2; }
+    I:moduli I:moduli/Graphica-Linux/api I:moduli/EngineRuntime J:resurrect/_obj O:resurrect/_bin/esse || { echo "Resurrectio ESSE falsa."; exit 2; }
 cp constructor/esse.loc.ini resurrect/_bin/esse.loc.ini
 mkdir bin
 resurrect/_bin/esse -R bin/esse.ini --reconfigura -N || { echo "Reconfiguratio falsa."; exit 3; }
