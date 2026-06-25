@@ -20,6 +20,7 @@ CoCompila {
 	CI = "PlatformDependent/Threading.cpp"
 	CJ = "PlatformDependent/SystemGraphics.cpp"
 	CK = "PlatformDependent/ESSE.cpp"
+	CL = "PlatformDependent/Cryptography.cpp"
 	DA = "PlatformSpecific/UnixFileAccess.cpp"
 	EA = "Miscellaneous/ConsoleServices.cpp"
 	EB = "Miscellaneous/DynamicString.cpp"

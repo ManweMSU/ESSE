@@ -27,7 +27,7 @@
 #include "Interfaces/Assembly.h"
 // #include "Interfaces/Clipboard.h"
 #include "Interfaces/Console.h"
-// #include "Interfaces/Cryptography.h"
+#include "Interfaces/Cryptography.h"
 #include "Interfaces/DynamicLibrary.h"
 // #include "Interfaces/KeyCodes.h"
 #include "Interfaces/Process.h"

@@ -779,8 +779,8 @@ namespace Engine
 	bool operator!=(const ImmutableString & a, const ImmutableString & b) { return ImmutableString::Compare(a, b) != 0; }
 	bool operator!=(const widechar * a, const ImmutableString & b) { return StringCompare(a, b) != 0; }
 	bool operator!=(const ImmutableString & a, const widechar * b) { return StringCompare(a, b) != 0; }
-	bool operator!=(const wchar_t * a, const ImmutableString & b) { return string::Compare(a, b) == 0; }
-	bool operator!=(const ImmutableString & a, const wchar_t * b) { return string::Compare(a, b) == 0; }
+	bool operator!=(const wchar_t * a, const ImmutableString & b) { return string::Compare(a, b) != 0; }
+	bool operator!=(const ImmutableString & a, const wchar_t * b) { return string::Compare(a, b) != 0; }
 	bool operator<=(const ImmutableString & a, const ImmutableString & b) { return StringCompare(a, b) <= 0; }
 	bool operator>=(const ImmutableString & a, const ImmutableString & b) { return StringCompare(a, b) >= 0; }
 	bool operator<(const ImmutableString & a, const ImmutableString & b) { return StringCompare(a, b) < 0; }

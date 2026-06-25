@@ -18,4 +18,5 @@ CoCompila {
 	H = "CorThreads.cxx"
 	I = "CorProcesses.cxx"
 	J = "CorShell.cxx"
+	K = "CorCrypto.cxx"
 }

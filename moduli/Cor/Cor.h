@@ -20,6 +20,7 @@
 #include "IO/CorIPC.h"
 #include "IO/CorPaths.h"
 #include "IO/CorStreams.h"
+#include "IO/CorCrypto.h"
 
 #include "Tasks/CorThreads.h"
 #include "Tasks/CorProcesses.h"
