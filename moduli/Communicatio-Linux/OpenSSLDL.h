@@ -54,6 +54,7 @@ namespace ESSE
 		public:
 			DEFINE_FUNCTION_POINTER(OPENSSL_init_ssl, int, (uint64, const void *))
 			DEFINE_FUNCTION_POINTER(ERR_clear_error, void, (void))
+			DEFINE_FUNCTION_POINTER(ERR_print_errors_cb, void, (int (*) (const char *, uintptr, void *), void *))
 			DEFINE_FUNCTION_POINTER(TLS_server_method, SSL_METHOD, (void))
 			DEFINE_FUNCTION_POINTER(TLS_client_method, SSL_METHOD, (void))
 			DEFINE_FUNCTION_POINTER(SSL_CTX_new, SSL_CTX, (SSL_METHOD))

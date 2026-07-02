@@ -18,6 +18,7 @@ namespace ESSE
 			try {
                 DEFINE_FUNCTION_IMPORT(OPENSSL_init_ssl)
                 DEFINE_FUNCTION_IMPORT(ERR_clear_error)
+                DEFINE_FUNCTION_IMPORT(ERR_print_errors_cb)
                 DEFINE_FUNCTION_IMPORT(TLS_server_method)
                 DEFINE_FUNCTION_IMPORT(TLS_client_method)
                 DEFINE_FUNCTION_IMPORT(SSL_CTX_new)
