@@ -1,0 +1,8 @@
+CoClassis = "ImplantatioAbstractionis"
+CoNomen = "ESSE Modulus Communicationis"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "communicatio"
+CoPlanusAbstractionis = "communicatio"
+CoModuliRequisiti { A = "cor" }
+CoCompila { A = "Communicatio.cxx" }

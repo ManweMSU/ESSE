@@ -7,6 +7,8 @@ resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     moduli/Auxilia-Linux/ \
     moduli/Codices/ \
     moduli/Codices-Linux/ \
+    moduli/Communicatio/ \
+    moduli/Communicatio-Linux/ \
     moduli/Compressio/ \
     moduli/Consolatorium/ \
     moduli/Consolatorium-Linux/ \

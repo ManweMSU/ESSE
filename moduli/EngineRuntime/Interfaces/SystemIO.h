@@ -8,6 +8,8 @@ namespace Engine
 {
 	namespace IO
 	{
+		typedef ESSE::InputOutputException FileAccessException;
+
 		handle CreateFile(const string & path, Streaming::FileAccess access, Streaming::FileCreationMode mode);
 		void CreatePipe(handle * pipe_in, handle * pipe_out);
 		handle CloneHandle(handle file);

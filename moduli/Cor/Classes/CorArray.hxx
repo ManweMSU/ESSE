@@ -619,8 +619,12 @@ namespace ESSE
 	array<string> SplitString(const string & str, unichar32 div);
 	string GatherString(const array<string> & str, unichar32 div);
 
+	string HexStringFromData(const void * data, uintptr length, uintptr max_length, bool byte_spaces);
 	string HexStringFromData(const DataBlock * data, uintptr max_length, bool byte_spaces);
 	oref<DataBlock> DataFromHexString(const string & str);
+	string Base64StringFromData(const void * data, uintptr length);
+	string Base64StringFromData(const DataBlock * data);
+	oref<DataBlock> DataFromBase64String(const string & str);
 
 	class dynamic_string_ucs1
 	{

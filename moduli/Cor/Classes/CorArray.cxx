@@ -2,6 +2,17 @@
 
 namespace ESSE
 {
+	constexpr const unichar32 * Base64Digits = U"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	uint Base64DigitToNumber(unichar32 d)
+	{
+		if (d >= U'A' && d <= U'Z') return d - U'A';
+		else if (d >= U'a' && d <= U'z') return d - U'a' + 26;
+		else if (d >= U'0' && d <= U'9') return d - U'0' + 52;
+		else if (d == U'+') return 62;
+		else if (d == U'/') return 63;
+		else if (d == U'=') return 0;
+		else throw InvalidFormatException();
+	}
 	oref<DataBlock> EncodeString(const string & str, Unicode::Encoding enc, bool include_terminator)
 	{
 		auto data = owrap(new DataBlock(1));
@@ -41,9 +52,9 @@ namespace ESSE
 		}
 		return string::Concatenate(addr, len, addr.GetLength());
 	}
-	string HexStringFromData(const DataBlock * data, uintptr max_length, bool byte_spaces)
+	string HexStringFromData(const void * data, uintptr length, uintptr max_length, bool byte_spaces)
 	{
-		auto bytes_take = (max_length > 0) ? min(max_length, data->GetLength()) : data->GetLength();
+		auto bytes_take = max_length ? min(max_length, length) : length;
 		auto string_size = bytes_take * 2;
 		if (byte_spaces && bytes_take > 1) string_size += bytes_take - 1;
 		auto str = reinterpret_cast<char *>(malloc(string_size));
@@ -51,7 +62,7 @@ namespace ESSE
 		uintptr pos = 0;
 		for (uintptr i = 0; i < bytes_take; i++) {
 			if (i && byte_spaces) { str[pos] = ' '; pos++; }
-			auto byte = data->ElementAt(i);
+			auto byte = reinterpret_cast<const uint8 *>(data)[i];
 			str[pos] = char(HexadecimalBase[(byte & 0xF0) >> 4]);
 			str[pos + 1] = char(HexadecimalBase[byte & 0x0F]);
 			pos += 2;
@@ -61,6 +72,7 @@ namespace ESSE
 		free(str);
 		return result;
 	}
+	string HexStringFromData(const DataBlock * data, uintptr max_length, bool byte_spaces) { return HexStringFromData(data->GetBuffer(), data->GetLength(), max_length, byte_spaces); }
 	oref<DataBlock> DataFromHexString(const string & str)
 	{
 		auto data = owrap(new DataBlock(str.GetLength() / 2));
@@ -79,6 +91,48 @@ namespace ESSE
 		}
 		if (n) throw InvalidFormatException();
 		return data;
+	}
+	string Base64StringFromData(const void * data, uintptr length)
+	{
+		auto source = reinterpret_cast<const uint8 *>(data);
+		array<unichar32> result(length * 4 / 3 + 4);
+		for (uintptr i = 0; i < length; i += 3) {
+			uint32 number = uint32(source[i]) << 16;
+			if (i + 1 < length) number |= uint32(source[i + 1]) << 8;
+			if (i + 2 < length) number |= uint32(source[i + 2]);
+			auto nlength = result.GetLength() + 4;
+			result.SetLength(nlength);
+			result[nlength - 1] = Base64Digits[number & 0x3F];
+			result[nlength - 2] = Base64Digits[(number >> 6) & 0x3F];
+			result[nlength - 3] = Base64Digits[(number >> 12) & 0x3F];
+			result[nlength - 4] = Base64Digits[(number >> 18) & 0x3F];
+			if (length - i == 2) {
+				result[nlength - 1] = U'=';
+			} else if (length - i == 1) {
+				result[nlength - 1] = U'=';
+				result[nlength - 2] = U'=';
+			}
+		}
+		return string(result.GetBuffer(), result.GetLength());
+	}
+	string Base64StringFromData(const DataBlock * data) { return Base64StringFromData(data->GetBuffer(), data->GetLength()); }
+	oref<DataBlock> DataFromBase64String(const string & str)
+	{
+		if (str.GetLength() & 3) throw InvalidFormatException();
+		auto maxlength = str.GetLength() * 3 / 4;
+		auto result = owrap(new DataBlock(maxlength));
+		for (uintptr i = 0; i < str.GetLength(); i += 4) {
+			auto pfrag = str.GetData() + i;
+			uint number = (Base64DigitToNumber(pfrag[0]) << 18) | (Base64DigitToNumber(pfrag[1]) << 12) | (Base64DigitToNumber(pfrag[2]) << 6) | Base64DigitToNumber(pfrag[3]);
+			uint bytes;
+			if (pfrag[2] == U'=' && pfrag[3] == U'=') bytes = 1;
+			else if (pfrag[3] == U'=') bytes = 2;
+			else bytes = 3;
+			result->Append(number >> 16);
+			if (bytes > 1) result->Append(number >> 8);
+			if (bytes > 2) result->Append(number);
+		}
+		return result;
 	}
 
 	dynamic_string_ucs1::dynamic_string_ucs1(void) : _data(0x200), _length(0) { _data << 0; }

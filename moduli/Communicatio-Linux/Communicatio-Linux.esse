@@ -1,0 +1,15 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Communicationis [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "communicatio-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "communicatio"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "communicatio" }
+CoCompila {
+    A = "Communicatio.cxx"
+    B = "OpenSSLDL.cxx"
+    C = "CommUnix.cxx"
+    D = "CommOpenSSL.cxx"
+}
