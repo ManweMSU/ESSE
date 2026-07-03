@@ -1,4 +1,5 @@
 #include "OpenSSLDL.h"
+#include <dlfcn.h>
 
 namespace ESSE
 {
@@ -13,7 +14,7 @@ namespace ESSE
 		long OSSLAPI::SSL_CTX_set1_chain_cert_store(SSL_CTX ctx, X509_STORE s) { return SSL_CTX_ctrl(ctx, SSL_CTRL_SET_CHAIN_CERT_STORE, 1, s); }
 		OSSLAPI::OSSLAPI(void)
 		{
-			_library = IO::LoadLibrary("/usr/lib/libssl.so");
+			_library = dlopen("libssl.so", RTLD_NOW);
 			if (!_library) throw NotImplementedException();
 			try {
 				DEFINE_FUNCTION_IMPORT(OPENSSL_init_ssl)
@@ -55,10 +56,10 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(PKCS12_parse)
 				DEFINE_FUNCTION_IMPORT(EVP_PKEY_free)
 				DEFINE_FUNCTION_IMPORT(OPENSSL_sk_pop_free)
-			} catch (...) { IO::ReleaseLibrary(_library); throw; }
+			} catch (...) { dlclose(_library); throw; }
 			OPENSSL_init_ssl(0, 0);
 		}
-		OSSLAPI::~OSSLAPI(void) { IO::ReleaseLibrary(_library); }
+		OSSLAPI::~OSSLAPI(void) { dlclose(_library); }
 		oref<OSSLAPI> OSSLAPI::Query(void)
 		{
 			Memory::AcquireRootLock();

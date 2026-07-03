@@ -206,7 +206,7 @@ namespace ESSE
 			if (libcrypto::initialized) return;
 			Memory::AcquireRootLock();
 			if (libcrypto::initialized) { Memory::ReleaseRootLock(); return; }
-			libcrypto::library = dlopen("/usr/lib/libcrypto.so", RTLD_NOW);
+			libcrypto::library = dlopen("libcrypto.so", RTLD_NOW);
 			if (libcrypto::library) {
 				DEFINE_CRYPTO_FUNCTION_IMPORT(EVP_aes_128_ecb)
 				DEFINE_CRYPTO_FUNCTION_IMPORT(EVP_aes_128_cbc)

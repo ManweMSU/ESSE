@@ -45,7 +45,7 @@ namespace ESSE
 
 		void Linux_UnicodeLibraryInitialize(void) noexcept
 		{
-			libunistring::library = dlopen("/usr/lib/libunistring.so", RTLD_NOW);
+			libunistring::library = dlopen("libunistring.so", RTLD_NOW);
 			if (libunistring::library) {
 				DEFINE_FUNCTION_IMPORT(uc_toupper)
 				DEFINE_FUNCTION_IMPORT(uc_tolower)

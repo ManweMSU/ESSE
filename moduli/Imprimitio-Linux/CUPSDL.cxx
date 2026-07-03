@@ -1,4 +1,5 @@
 #include "CUPSDL.h"
+#include <dlfcn.h>
 
 namespace ESSE
 {
@@ -6,7 +7,7 @@ namespace ESSE
 	{
 		CUPSAPI::CUPSAPI(void)
 		{
-			_library = IO::LoadLibrary("/usr/lib/libcups.so");
+			_library = dlopen("libcups.so", RTLD_NOW);
 			if (!_library) throw NotImplementedException();
 			try {
 				DEFINE_FUNCTION_IMPORT(cupsEnumDests)
@@ -32,8 +33,8 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(cupsStartDestDocument)
 				DEFINE_FUNCTION_IMPORT(cupsWriteRequestData)
 				DEFINE_FUNCTION_IMPORT(cupsFinishDestDocument)
-			} catch (...) { IO::ReleaseLibrary(_library); throw; }
+			} catch (...) { dlclose(_library); throw; }
 		}
-		CUPSAPI::~CUPSAPI(void) { IO::ReleaseLibrary(_library); }
+		CUPSAPI::~CUPSAPI(void) { dlclose(_library); }
 	}
 }

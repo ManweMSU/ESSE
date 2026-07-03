@@ -247,7 +247,7 @@ namespace ESSE
 			if (libpng::initialized) return;
 			Memory::AcquireRootLock();
 			if (libpng::initialized) { Memory::ReleaseRootLock(); return; }
-			libpng::library = dlopen("/usr/lib/libpng.so", RTLD_NOW);
+			libpng::library = dlopen("libpng.so", RTLD_NOW);
 			if (libpng::library) {
 				DEFINE_PNG_FUNCTION_IMPORT(png_sig_cmp)
 				DEFINE_PNG_FUNCTION_IMPORT(png_create_read_struct)
@@ -279,7 +279,7 @@ namespace ESSE
 			if (libjpeg::initialized) return;
 			Memory::AcquireRootLock();
 			if (libjpeg::initialized) { Memory::ReleaseRootLock(); return; }
-			libjpeg::library = dlopen("/usr/lib/libturbojpeg.so", RTLD_NOW);
+			libjpeg::library = dlopen("libturbojpeg.so", RTLD_NOW);
 			if (libjpeg::library) {
 				DEFINE_JPEG_FUNCTION_IMPORT(tjInitCompress)
 				DEFINE_JPEG_FUNCTION_IMPORT(tjInitDecompress)
@@ -297,7 +297,7 @@ namespace ESSE
 			if (libtiff::initialized) return;
 			Memory::AcquireRootLock();
 			if (libtiff::initialized) { Memory::ReleaseRootLock(); return; }
-			libtiff::library = dlopen("/usr/lib/libtiff.so", RTLD_NOW);
+			libtiff::library = dlopen("libtiff.so", RTLD_NOW);
 			if (libtiff::library) {
 				DEFINE_TIFF_FUNCTION_IMPORT(TIFFSetErrorHandler)
 				DEFINE_TIFF_FUNCTION_IMPORT(TIFFSetWarningHandler)
@@ -318,7 +318,7 @@ namespace ESSE
 			if (libwebp::initialized) return;
 			Memory::AcquireRootLock();
 			if (libwebp::initialized) { Memory::ReleaseRootLock(); return; }
-			libwebp::library = dlopen("/usr/lib/libwebp.so", RTLD_NOW);
+			libwebp::library = dlopen("libwebp.so", RTLD_NOW);
 			if (libwebp::library) {
 				DEFINE_WEBP_FUNCTION_IMPORT(WebPFree)
 				DEFINE_WEBP_FUNCTION_IMPORT(WebPEncodeRGB)
@@ -340,7 +340,7 @@ namespace ESSE
 			if (libheif::initialized) return;
 			Memory::AcquireRootLock();
 			if (libheif::initialized) { Memory::ReleaseRootLock(); return; }
-			libheif::library = dlopen("/usr/lib/libheif.so", RTLD_NOW);
+			libheif::library = dlopen("libheif.so", RTLD_NOW);
 			if (libheif::library) {
 				DEFINE_HEIF_FUNCTION_IMPORT(heif_context_alloc)
 				DEFINE_HEIF_FUNCTION_IMPORT(heif_context_free)

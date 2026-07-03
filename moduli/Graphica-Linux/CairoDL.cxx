@@ -1,4 +1,5 @@
 #include "CairoDL.h"
+#include <dlfcn.h>
 
 namespace ESSE
 {
@@ -6,7 +7,7 @@ namespace ESSE
 	{
 		CairoAPI::CairoAPI(void)
 		{
-			_library = IO::LoadLibrary("/usr/lib/libcairo.so");
+			_library = dlopen("libcairo.so", RTLD_NOW);
 			if (!_library) throw NotImplementedException();
 			try {
 				DEFINE_FUNCTION_IMPORT(cairo_version)
@@ -72,12 +73,12 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(cairo_set_font_face)
 				DEFINE_FUNCTION_IMPORT(cairo_set_font_size)
 				DEFINE_FUNCTION_IMPORT(cairo_show_glyphs)
-			} catch (...) { IO::ReleaseLibrary(_library); throw; }
+			} catch (...) { dlclose(_library); throw; }
 		}
-		CairoAPI::~CairoAPI(void) { IO::ReleaseLibrary(_library); }
+		CairoAPI::~CairoAPI(void) { dlclose(_library); }
 		FontConfigAPI::FontConfigAPI(void)
 		{
-			_library = IO::LoadLibrary("/usr/lib/libfontconfig.so");
+			_library = dlopen("libfontconfig.so", RTLD_NOW);
 			if (!_library) throw NotImplementedException();
 			try {
 				DEFINE_FUNCTION_IMPORT(FcInit)
@@ -104,12 +105,12 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(FcObjectSetDestroy)
 				DEFINE_FUNCTION_IMPORT(FcFontList)
 				DEFINE_FUNCTION_IMPORT(FcFontSetDestroy)
-			} catch (...) { IO::ReleaseLibrary(_library); throw; }
+			} catch (...) { dlclose(_library); throw; }
 		}
-		FontConfigAPI::~FontConfigAPI(void) { IO::ReleaseLibrary(_library); }
+		FontConfigAPI::~FontConfigAPI(void) { dlclose(_library); }
 		FreeTypeAPI::FreeTypeAPI(void)
 		{
-			_library = IO::LoadLibrary("/usr/lib/libfreetype.so");
+			_library = dlopen("libfreetype.so", RTLD_NOW);
 			if (!_library) throw NotImplementedException();
 			try {
 				DEFINE_FUNCTION_IMPORT(FT_Init_FreeType)
@@ -121,8 +122,8 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(FT_Load_Glyph)
 				DEFINE_FUNCTION_IMPORT(FT_Get_Char_Index)
 				DEFINE_FUNCTION_IMPORT(FT_Select_Size)
-			} catch (...) { IO::ReleaseLibrary(_library); throw; }
+			} catch (...) { dlclose(_library); throw; }
 		}
-		FreeTypeAPI::~FreeTypeAPI(void) { IO::ReleaseLibrary(_library); }
+		FreeTypeAPI::~FreeTypeAPI(void) { dlclose(_library); }
 	}
 }
