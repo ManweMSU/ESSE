@@ -50,7 +50,6 @@ int Main(void)
 		console.WriteLineFormatted(v4);
 		console.SetTitle(U"Консоль");
 
-		ESSE::Vulkan::SetDeviceValidationLayer(true);
 		auto devf = ESSE::Graphica::CreateDeviceFactory();
 		auto dev = devf->CreateDefaultDevice();
 		auto ctx = dev->GetPrimaryDeviceContext();

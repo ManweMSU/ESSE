@@ -1,0 +1,11 @@
+CoClassis = "ImplantatioAbstractionis"
+CoNomen = "ESSE Modulus Imprimitionis"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "imprimitio"
+CoPlanusAbstractionis = "imprimitio"
+CoModuliRequisiti { A = "cor" B = "graphica" }
+CoCompila {
+	A = "ImprimitorPDF.cxx"
+	B = "Imprimitor.cxx"
+}

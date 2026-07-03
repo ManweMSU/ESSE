@@ -1,0 +1,13 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Imprimitionis [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "imprimitio-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "imprimitio"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "imprimitio" C = "graphica" D = "graphica-linux" }
+CoCompila {
+	A = "Imprimitor.cxx"
+	B = "CUPSDL.cxx"
+}
