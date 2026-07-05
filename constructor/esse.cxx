@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "ioss.h"
 #include "esse_reconf.h"
+#include "esse_devenv.h"
 
 using namespace Engine;
 using namespace Engine::IO;
@@ -247,13 +248,11 @@ int Main(void)
 					}
 					if (!esse::constructor::make_project_dependencies(build)) return 2;
 					if (!esse::constructor::construct(build)) return 3;
+					if (state.create_vscode_environment || state.create_vscode_workspace) {
+						if (!esse::constructor::make_development_environment(build, state.create_vscode_environment, state.create_vscode_workspace)) return 4;
+					}
 					if (state.print_output_executable) io.console->WriteLine(build.output_exec_path);
 					if (state.print_output_bundle) io.console->WriteLine(build.output_bundle_path);
-
-					// TODO: IMPLEMENT
-
-					// bool create_vscode_environment = false, create_vscode_workspace = false;
-
 				}
 			}
 		} else {

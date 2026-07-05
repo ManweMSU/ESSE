@@ -7,6 +7,7 @@
 	F = "constructor/esse_rsrc.cxx"
 	G = "constructor/esse_link.cxx"
 	H = "constructor/esse_reconf.cxx"
+	I = "constructor/esse_devenv.cxx"
 }
 "-Debug" {
 	CompileList {
@@ -31,5 +32,5 @@ VersionInformation {
 	CompanyName = "Engine Software"
 	Copyright = "© Engine Software. 2026"
 	InternalName = "esse"
-	Version = "2.99.5.13"
+	Version = "2.99.6.14"
 }

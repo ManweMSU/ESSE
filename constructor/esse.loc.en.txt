@@ -57,6 +57,10 @@
 226	"Failed to load the resource '%0'."
 227	"Failed to write the resource header '%0'."
 228	"Failed to launch the resource compiler."
+229	"Failed to create the Visual Studio Code workspace."
+230	"Failed to create the Visual Studio Code C/C++ configuration."
+231	"Failed to create the Visual Studio Code build tasks."
+232	"Failed to create the Visual Studio Code launch task."
 
 301 "Operating system targets:"
 302 "Processor architecture targets:"
@@ -80,3 +84,5 @@
 320 "Linking"
 321 " to "
 322 ")"
+323 "Build"
+324 "Launch"
