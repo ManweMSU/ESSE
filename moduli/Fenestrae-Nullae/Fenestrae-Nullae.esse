@@ -1,0 +1,8 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Fenestrarum [Nullus]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "fenestrae-nullae"
+CoImplantatioAbstractionis = "fenestrae"
+CoModuliRequisiti { A = "cor" B = "fenestrae" }
+CoCompila { A = "WindowSystem.cxx" }

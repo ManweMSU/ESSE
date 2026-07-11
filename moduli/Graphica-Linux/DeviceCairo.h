@@ -21,6 +21,7 @@ namespace ESSE
 			virtual uint GetHeight(void) noexcept override;
 			virtual bool Update(Picturae::Picture * source) noexcept override;
 			virtual oref<Picturae::Picture> QueryContents(void) noexcept override;
+			CairoAPI * GetAPI(void) const noexcept;
 			Picturae::Picture * GetData(void) const noexcept;
 			cairo_surface_t GetSurface(void) const noexcept;
 		};
@@ -50,6 +51,7 @@ namespace ESSE
 		};
 		class CairoDevice : public Graphica::IDeviceContext2D
 		{
+		protected:
 			oref<CairoAPI> _api;
 			oref<Graphica::IDeviceContextFactory2D> _parent;
 			oref<Graphica::IBitmap> _bitmap;
@@ -60,6 +62,7 @@ namespace ESSE
 			void _perform_brush_setup(cairo_t ctx, Graphica::IBrush * brush, const Rectangle & at) noexcept;
 			void _perform_brush_finalization(cairo_t ctx, Graphica::IBrush * brush) noexcept;
 		public:
+			CairoDevice(CairoAPI * api, Graphica::IDeviceContextFactory2D * parent);
 			CairoDevice(CairoAPI * api, Graphica::IDeviceContextFactory2D * parent, Graphica::IBitmap * dest);
 			virtual ~CairoDevice(void) override;
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override;

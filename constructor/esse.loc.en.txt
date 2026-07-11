@@ -61,6 +61,7 @@
 230	"Failed to create the Visual Studio Code C/C++ configuration."
 231	"Failed to create the Visual Studio Code build tasks."
 232	"Failed to create the Visual Studio Code launch task."
+233	"Failed to convert the icon file '%0'."
 
 301 "Operating system targets:"
 302 "Processor architecture targets:"

@@ -350,6 +350,7 @@ namespace esse {
 		}
 		string find_resource_file(const build_state & state, const string & current_root, const string & name)
 		{
+			if (!name.Length()) return L"";
 			if (FileExists(current_root + L"/" + name)) return ExpandPath(current_root + L"/" + name);
 			for (auto & d : state.data_files_list) if (FileExists(d + L"/" + name)) return ExpandPath(d + L"/" + name);
 			return ExpandPath(current_root + L"/" + name);

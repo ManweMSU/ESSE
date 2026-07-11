@@ -34,20 +34,68 @@ namespace esse {
 				if (sizes) for (auto & s : sizes->GetValues()) icon_sizes.InsertLast(sizes->GetValueInteger(s));
 			}
 		}
+		bool resource_tool::prepare_icon(const string & input_path, Engine::Volumes::Dictionary<string, icon_record> & map, uint & counter, build_state * state) noexcept
+		{
+			try {
+				if (map[input_path]) return true;
+				auto index = counter++;
+				auto dest_name = ExpandPath(state->project_object_path + L"/" + Path::GetFileNameWithoutExtension(state->project_file_path) + L"-icon-" + string(index) + L"." + icon_extension);
+				SafePointer<FileStream> source_stream = new FileStream(input_path, AccessRead, OpenExisting);
+				SafePointer<FileStream> dest_stream = new FileStream(dest_name, AccessReadWrite, OpenAlways);
+				if (!dest_stream->Length() || DateTime::GetFileAlterTime(source_stream->Handle()) > DateTime::GetFileAlterTime(dest_stream->Handle())) {
+					SafePointer<Codec::Image> source = Codec::DecodeImage(source_stream);
+					SafePointer<Codec::Image> dest = new Codec::Image;
+					for (auto & s : icon_sizes) {
+						auto f = source->GetFramePreciseSize(s, s);
+						if (f) {
+							f->Usage = Codec::FrameUsage::ColorMap;
+							f->DpiUsage = 1.0;
+							f->HotPointX = f->HotPointY = 0;
+							f->Duration = 0;
+							dest->Frames.Append(f);
+						}
+					}
+					if (!dest->Frames.Length()) throw InvalidFormatException();
+					dest_stream->SetLength(0);
+					dest_stream->Seek(0, Begin);
+					Codec::EncodeImage(dest_stream, dest, icon_codec);
+				}
+				map.Append(input_path, icon_record { .internal_name = index, .intermediate_path = dest_name });
+				return true;
+			} catch (...) { return false; }
+		}
 		void resource_tool::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
-
-			// TODO: PERFORM ICON BUILDS
-			// string icon_codec, icon_extension;
-			// Engine::Volumes::List<int> icon_sizes;
-
+			Volumes::Dictionary<string, icon_record> icon_map;
+			if (state->app.application_icon.Length()) {
+				uint icon_counter = 1;
+				if (!prepare_icon(state->app.application_icon, icon_map, icon_counter, state)) {
+					context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), state->app.application_icon));
+					return;
+				}
+			}
+			uint icon_counter = 2;
+			for (auto & ff : state->app.file_formats) if (ff.file_format_icon.Length()) {
+				if (!prepare_icon(ff.file_format_icon, icon_map, icon_counter, state)) {
+					context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), ff.file_format_icon));
+					return;
+				}
+			}
 			if (mode == resource_tool_mode::embed || mode == resource_tool_mode::bundle) {
 				build_tool_status exit_status = build_tool_status::built_new;
 				Time time_from = 0, time_to = 0;
+				if (mode == resource_tool_mode::embed) for (auto & i : icon_map) if (i.value.internal_name == 1) {
+					context.enter_state_critical_section();
+					try {
+						state->resource_list.InsertLast(resource_task {
+							.source_path = i.value.intermediate_path,
+							.resource_name = L"1",
+							.resource_locale = L"ICON"
+						});
+					} catch (...) {}
+					context.leave_state_critical_section();
+				}
 				if (!state->resource_list.IsEmpty() || state->modules_to_build[resource_driver_module]) {
-
-					// TODO: EMBED APP ICON AS WELL
-
 					if (!state->idle_mode) {
 						Array<resource_record> resource_table(0x20);
 						uint counter = 0;

@@ -73,6 +73,11 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(cairo_set_font_face)
 				DEFINE_FUNCTION_IMPORT(cairo_set_font_size)
 				DEFINE_FUNCTION_IMPORT(cairo_show_glyphs)
+				#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+				DEFINE_FUNCTION_IMPORT(cairo_xlib_surface_create_with_xrender_format)
+				DEFINE_FUNCTION_IMPORT(cairo_xlib_surface_set_drawable)
+				DEFINE_FUNCTION_IMPORT(cairo_xlib_surface_set_size)
+				#endif
 			} catch (...) { dlclose(_library); throw; }
 		}
 		CairoAPI::~CairoAPI(void) { dlclose(_library); }

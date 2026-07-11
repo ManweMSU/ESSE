@@ -4,6 +4,13 @@
 
 namespace ESSE
 {
+	namespace VirtualKeyModifiers
+	{
+		constexpr uint Shift		= 0x01;
+		constexpr uint Control		= 0x02;
+		constexpr uint Alternative	= 0x04;
+		constexpr uint System		= 0x08;
+	}
 	namespace VirtualKeyCodes
 	{
 		constexpr uint Back = 0x08;

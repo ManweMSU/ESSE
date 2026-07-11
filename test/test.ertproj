@@ -1,2 +1,3 @@
 CompileList { A = "test.cxx" }
 UseVersionDefines = true
+ApplicationIcon = "test-star.eiwv"

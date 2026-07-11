@@ -13,15 +13,24 @@
 #include <limits.h>
 #include <sys/resource.h>
 
+#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+#include <Fenestrae-Linux-X11/X11WindowSystem.h>
+#endif
+
 extern char ** environ;
 
 namespace ESSE
 {
 	namespace Linux
 	{
-		// TODO: ADD WINDOW SERVER BASED IMPLEMENTATION
+		// TODO: ADD WAYLAND BASED IMPLEMENTATION
+		#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+		bool IsProcessGUI(pid_t pid) noexcept { return X11::IsGraphicalProcess(pid); }
+		bool ActivateProcessGUI(pid_t pid) noexcept { return X11::ActivateProcess(pid); }
+		#else
 		bool IsProcessGUI(pid_t pid) noexcept { return false; }
 		bool ActivateProcessGUI(pid_t pid) noexcept { return false; }
+		#endif
 	}
 	class PosixProcess : public Process
 	{

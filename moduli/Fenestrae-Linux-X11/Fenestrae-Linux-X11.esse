@@ -1,0 +1,19 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Fenestrarum [Linux, X11]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "fenestrae-linux-x11"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "fenestrae"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "fenestrae" C = "dbus" D = "imagines" E = "auxilia" F = "graphica" }
+CoDefini { ESSE_MODULUS_FENESTRARUM_LINUX_X11 = true }
+CoCompila {
+	A = "X11DL.cxx"
+	B = "X11Dispatch.cxx"
+	C = "X11WindowSystem.cxx"
+}
+
+// TODO: USE DEFINES
+//ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
+//ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND_X11

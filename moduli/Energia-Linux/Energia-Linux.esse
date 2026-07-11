@@ -1,0 +1,10 @@
+CoClassis = "Specialis"
+CoNomen = "ESSE Modulus Regiminis Energiae [Linux]"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "energia-linux"
+CoSystema { A = "Linux" }
+CoImplantatioAbstractionis = "energia"
+CoImplantatioDefalta = true
+CoModuliRequisiti { A = "cor" B = "energia" C = "dbus" }
+CoCompila { A = "Energia.cxx" }

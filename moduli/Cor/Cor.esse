@@ -21,8 +21,9 @@ CoCompila {
 	I = "IO/CorStreams.cxx"
 	J = "IO/CorIPC.cxx"
 	K = "IO/CorCrypto.cxx"
-	L = "Tasks/CorProcesses.cxx"
-	M = "Tasks/CorTasks.cxx"
-	N = "Images/CorImages.cxx"
-	O = "Images/CorGraphics.cxx"
+	L = "IO/CorWindows.cxx"
+	M = "Tasks/CorProcesses.cxx"
+	N = "Tasks/CorTasks.cxx"
+	O = "Images/CorImages.cxx"
+	P = "Images/CorGraphics.cxx"
 }

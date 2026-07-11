@@ -331,6 +331,11 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(cairo_set_font_face, void, (cairo_t, cairo_font_face_t))
 			DEFINE_FUNCTION_POINTER(cairo_set_font_size, void, (cairo_t, double))
 			DEFINE_FUNCTION_POINTER(cairo_show_glyphs, void, (cairo_t, const cairo_glyph_t *, int))
+			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+			DEFINE_FUNCTION_POINTER(cairo_xlib_surface_create_with_xrender_format, cairo_surface_t, (void *, unsigned long, void *, void *, int, int))
+			DEFINE_FUNCTION_POINTER(cairo_xlib_surface_set_drawable, void, (cairo_surface_t, unsigned long, int, int))
+			DEFINE_FUNCTION_POINTER(cairo_xlib_surface_set_size, void, (cairo_surface_t, int, int))
+			#endif
 		public:
 			CairoAPI(void);
 			virtual ~CairoAPI(void) override;

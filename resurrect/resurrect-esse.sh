@@ -14,6 +14,11 @@ resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     moduli/Consolatorium-Linux/ \
     moduli/Cor/ \
     moduli/Cor-Linux/ \
+    moduli/DBus-Linux/ \
+    moduli/Energia/ \
+    moduli/Energia-Linux/ \
+    moduli/Fenestrae/ \
+    moduli/Fenestrae-Nullae/ \
     moduli/Formatio-Imaginum/ \
     moduli/Formationes/ \
     moduli/Graphica/ \

@@ -1,0 +1,8 @@
+CoClassis = "Communalis"
+CoNomen = "ESSE Modulus pro DBus sup Linux"
+CoAuthor = "Engine Software"
+CoVersio = "2.0.0.1"
+CoIndentitas = "dbus"
+CoSystema { A = "Linux" }
+CoModuliRequisiti { A = "cor" }
+CoCompila { A = "DBus.cxx" B = "DBusDL.cxx" }

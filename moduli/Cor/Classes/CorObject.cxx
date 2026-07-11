@@ -24,5 +24,8 @@ namespace ESSE
 		.IDeviceContext				= handle(uintptr(0x07)),
 		.IDeviceContext2D			= handle(uintptr(0x08)),
 		.IDeviceContextFactory2D	= handle(uintptr(0x09)),
+		.IScreen					= handle(uintptr(0x0A)),
+		.IWindow					= handle(uintptr(0x0B)),
+		.IWindowSystem				= handle(uintptr(0x0C)),
 	};
 }

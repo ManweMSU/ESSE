@@ -10,12 +10,12 @@
 #define VULKAN_HPP_NO_EXCEPTIONS
 #include <glslang/glslang_c_interface.h>
 #include <vulkan/vulkan.hpp>
-#ifdef ESSE_LINUX_WAYLAND
-#include <vulkan/vulkan_wayland.h>
-#endif
-#ifdef ESSE_LINUX_X11
-#include <vulkan/vulkan_xlib.h>
-#endif
+// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
+// #include <vulkan/vulkan_wayland.h>
+// #endif
+// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+// #include <vulkan/vulkan_xlib.h>
+// #endif
 #include <unistd.h>
 #include <semaphore.h>
 #include <atomic>
@@ -33,23 +33,23 @@ namespace ESSE
 		constexpr uintptr _vk_constant_buffer_size = 0x10000;
 
 		const char * _vk_desired_interface_extensions[] {
-			#ifdef ESSE_LINUX_WAYLAND
-			VK_KHR_SURFACE_EXTENSION_NAME,
-			VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-			#endif
-			#ifdef ESSE_LINUX_X11
-			VK_KHR_SURFACE_EXTENSION_NAME,
-			VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-			#endif
+			// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
+			// VK_KHR_SURFACE_EXTENSION_NAME,
+			// VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+			// #endif
+			// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+			// VK_KHR_SURFACE_EXTENSION_NAME,
+			// VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
+			// #endif
 			VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 		};
 		const char * _vk_debug_interface_extensions[] {
 			VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		};
 		const char * _vk_desired_device_extensions[] {
-			#if defined(ESSE_LINUX_WAYLAND) || defined(ESSE_LINUX_X11)
-			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-			#endif
+			// #if defined(ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND) || defined(ESSE_MODULUS_FENESTRARUM_LINUX_X11)
+			// VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+			// #endif
 			VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 			VK_KHR_MAINTENANCE_1_EXTENSION_NAME,
 			VK_KHR_MAINTENANCE_2_EXTENSION_NAME,

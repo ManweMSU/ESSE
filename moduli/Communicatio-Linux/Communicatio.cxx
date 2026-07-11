@@ -13,7 +13,7 @@ namespace ESSE
 		public:
 			NetworkChannel(void) {}
 			virtual ~NetworkChannel(void) noexcept {}
-			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO _interface ? _interface->ToStringE(ectx) : U"Null Channel"; ESSE_TRY_OUTRO(string()) }
+			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return _interface ? _interface->ToStringE(ectx) : U"Null Channel"; ESSE_TRY_OUTRO(string()) }
 			virtual void Connect(NetworkAddress * address, ErrorContext * error, IDispatchTask * hdlr, ErrorContext & ectx) noexcept override
 			{
 				if (_interface) _interface->Connect(address, error, hdlr, ectx); else {
@@ -54,7 +54,7 @@ namespace ESSE
 		public:
 			NetworkListener(void) {}
 			virtual ~NetworkListener(void) noexcept {}
-			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO _interface ? _interface->ToStringE(ectx) : U"Null Listener"; ESSE_TRY_OUTRO(string()) }
+			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return _interface ? _interface->ToStringE(ectx) : U"Null Listener"; ESSE_TRY_OUTRO(string()) }
 			virtual void Bind(NetworkAddress * address, ErrorContext & ectx) noexcept override
 			{
 				if (_interface) _interface->Bind(address, ectx); else {

@@ -15,6 +15,7 @@ CoCompila {
 	A = "Graphica.cxx"
 	B = "CairoDL.cxx"
 	C = "DeviceCairo.cxx"
-	D = "Vulkan.cxx"
-	E = "Vulkan2D.cxx"
+	D = "DeviceWindowedCairo.cxx"
+	E = "Vulkan.cxx"
+	F = "Vulkan2D.cxx"
 }

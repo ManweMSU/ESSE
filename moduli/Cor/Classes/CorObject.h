@@ -45,6 +45,9 @@ namespace ESSE
 		const void * IDeviceContext;
 		const void * IDeviceContext2D;
 		const void * IDeviceContextFactory2D;
+		const void * IScreen;
+		const void * IWindow;
+		const void * IWindowSystem;
 	};
 	extern DynamicCastStandardClasses Classes;
 

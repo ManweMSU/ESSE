@@ -1,17 +1,31 @@
 #include <Graphica/Graphica.h>
+#include <Cor/IO/CorWindows.h>
+#include <Cor-Linux/CorLinuxClasses.h>
 #include "DeviceCairo.h"
+#include "DeviceWindowedCairo.h"
 #include "Vulkan.h"
 
 namespace ESSE
 {
 	namespace Linux
 	{
+		#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+		class X11CairoContextClass : public Windows::IWindowExtensionClass
+		{
+		public:
+			virtual bool ExtensionAttached(Windows::IWindow * window, Object * extension) noexcept override { return true; }
+			virtual void ExtensionDetached(Windows::IWindow * window, Object * extension) noexcept override { static_cast<Cairo::CairoDeviceX11 *>(extension)->Invalidate(); }
+		};
+		#endif
 		class LinuxDeviceContextFactory2D : public Graphica::IDeviceContextFactory2D
 		{
 			Cairo::FT_Library _font_library;
 			oref<Cairo::CairoAPI> _cairo_api;
 			oref<Cairo::FontConfigAPI> _fc_api;
 			oref<Cairo::FreeTypeAPI> _ft_api;
+			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+			oref<X11CairoContextClass> _x11_cairo_class;
+			#endif
 		public:
 			LinuxDeviceContextFactory2D(void) : _cairo_api(owrap(new Cairo::CairoAPI))
 			{
@@ -30,8 +44,27 @@ namespace ESSE
 			virtual oref<Graphica::IDeviceContext2D> CreateBitmapContext(Graphica::IBitmap * bitmap) noexcept override { try { return oref<Graphica::IDeviceContext2D>::CreateOwned(new Cairo::CairoDevice(_cairo_api, this, bitmap)); } catch (...) { return 0; } }
 			virtual oref<Graphica::IDeviceContext2D> CreatePresentationContext(DynamicObject * presentor, Graphica::IDevice * device) noexcept override
 			{
-				// TODO: IMPLEMENT FOR WINDOWS
-				return 0;
+				if (!presentor) return 0;
+				ErrorContext ectx; ErrorClear(ectx);
+				auto window = owrap(reinterpret_cast<Windows::IWindow *>(presentor->DynamicCast(ESSE::Classes.IWindow, ectx)));
+				if (ErrorTest(ectx)) return 0;
+				if (device) {
+					// TODO: IMPLEMENT WITH VULKAN
+					return 0;
+				} else {
+					// TODO: IMPLEMENT WITH CAIRO-WAYLAND
+					#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+					ErrorClear(ectx);
+					auto wx11 = reinterpret_cast<X11::IX11Window *>(window->DynamicCast(Classes::X11_Window, ectx));
+					if (!ErrorTest(ectx)) try {
+						if (!_x11_cairo_class) _x11_cairo_class = owrap(new X11CairoContextClass);
+						auto device = oref<Graphica::IDeviceContext2D>::CreateOwned(new Cairo::CairoDeviceX11(_cairo_api, this, window, wx11));
+						if (!window->AddExtension(device, _x11_cairo_class)) throw InvalidStateException();
+						return device;
+					} catch (...) { return 0; }
+					#endif
+					return 0;
+				}
 			}
 			virtual oref<Graphica::IFont> CreateFont(const string & font_face, uint style, uint height, ErrorContext & ectx) noexcept override
 			{

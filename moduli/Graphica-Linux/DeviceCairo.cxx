@@ -61,6 +61,7 @@ namespace ESSE
 			} catch (...) { return false; }
 		}
 		oref<Picturae::Picture> CairoBitmap::QueryContents(void) noexcept { try { return owrap(new Picturae::Picture(_data)); } catch (...) { return 0; } }
+		CairoAPI * CairoBitmap::GetAPI(void) const noexcept { return _api; }
 		Picturae::Picture * CairoBitmap::GetData(void) const noexcept { return _data; }
 		cairo_surface_t CairoBitmap::GetSurface(void) const noexcept { return _surface; }
 
@@ -355,6 +356,7 @@ namespace ESSE
 				_api->cairo_set_operator(_context, 2);
 			}
 		}
+		CairoDevice::CairoDevice(CairoAPI * api, Graphica::IDeviceContextFactory2D * parent) : _api(api), _parent(parent), _state(false) {}
 		CairoDevice::CairoDevice(CairoAPI * api, Graphica::IDeviceContextFactory2D * parent, Graphica::IBitmap * dest) : _api(api), _parent(parent), _bitmap(dest), _state(false)
 		{
 			if (!dest) throw InvalidArgumentException();
@@ -385,7 +387,6 @@ namespace ESSE
 		}
 		uint32 CairoDevice::GetImplementationFeatures(void) noexcept
 		{
-			// TODO: IMPLEMENT DeviceContextPresentationContext
 			uint result = Graphica::DeviceContextSupportsInversionEffect | Graphica::DeviceContextSupportsPolygons | Graphica::DeviceContextSupportsLayers;
 			if (_bitmap) result |= Graphica::DeviceContextBitmapContext;
 			return result;
@@ -436,14 +437,15 @@ namespace ESSE
 		}
 		void CairoDevice::PushClip(const Rectangle & rect) noexcept
 		{
+			if (!_context) return;
 			_api->cairo_save(_context);
 			if (rect.left < rect.right && rect.top < rect.bottom) _api->cairo_rectangle(_context, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
 			_api->cairo_clip(_context);
 		}
-		void CairoDevice::PopClip(void) noexcept { _api->cairo_restore(_context); }
+		void CairoDevice::PopClip(void) noexcept { if (!_context) return; _api->cairo_restore(_context); }
 		bool CairoDevice::BeginLayerAlpha(Graphica::ILayerBacking * layer, const Rectangle & rect) noexcept
 		{
-			if (!layer) return false;
+			if (!layer || !_context) return false;
 			auto l = static_cast<CairoLayerBacking *>(layer);
 			if (l->_alpha_pattern || l->_alpha_mode) return false;
 			l->_rect = rect;
@@ -456,7 +458,7 @@ namespace ESSE
 		}
 		bool CairoDevice::BeginLayer(Graphica::ILayerBacking * layer, const Rectangle & rect, double opacity) noexcept
 		{
-			if (!layer) return false;
+			if (!layer || !_context) return false;
 			auto l = static_cast<CairoLayerBacking *>(layer);
 			if (l->_alpha_mode) {
 				l->_alpha_pattern = _api->cairo_pop_group(_context);
@@ -477,7 +479,7 @@ namespace ESSE
 		}
 		void CairoDevice::EndLayer(Graphica::ILayerBacking * layer) noexcept
 		{
-			if (!layer) return;
+			if (!layer || !_context) return;
 			auto l = static_cast<CairoLayerBacking *>(layer);
 			if (l->_alpha_mode) return;
 			if (l->_alpha_pattern) {
@@ -495,7 +497,7 @@ namespace ESSE
 		}
 		void CairoDevice::Render(Graphica::IBrush * brush, const Rectangle & at) noexcept
 		{
-			if (!brush || at.left >= at.right || at.top >= at.bottom) return;
+			if (!brush || at.left >= at.right || at.top >= at.bottom || !_context) return;
 			_perform_brush_setup(_context, brush, at);
 			_api->cairo_rectangle(_context, at.left, at.top, at.right - at.left, at.bottom - at.top);
 			_api->cairo_fill(_context);
@@ -503,7 +505,7 @@ namespace ESSE
 		}
 		void CairoDevice::RenderPolyline(const double * px, const double * py, uint count, bool closed, Graphica::IBrush * brush, double width) noexcept
 		{
-			if (count < 2 || !brush) return;
+			if (count < 2 || !brush || !_context) return;
 			Rectangle aabb(floor(px[0]), floor(py[0]), ceil(px[0]) + 1, ceil(py[0]) + 1);
 			_api->cairo_move_to(_context, px[0], py[0]);
 			for (uint i = 1; i < count; i++) {
@@ -525,7 +527,7 @@ namespace ESSE
 		}
 		void CairoDevice::RenderPolygon(const double * px, const double * py, uint count, Graphica::IBrush * brush) noexcept
 		{
-			if (count < 2 || !brush) return;
+			if (count < 2 || !brush || !_context) return;
 			Rectangle aabb(floor(px[0]), floor(py[0]), ceil(px[0]) + 1, ceil(py[0]) + 1);
 			_api->cairo_move_to(_context, px[0], py[0]);
 			for (uint i = 1; i < count; i++) {
@@ -542,7 +544,7 @@ namespace ESSE
 		}
 		void CairoDevice::RenderGlyphRun(Graphica::IGlyphRun * run, const Index2 & at) noexcept
 		{
-			if (!run) return;
+			if (!run || !_context) return;
 			auto r = static_cast<CairoGlyphRun *>(run);
 			cairo_matrix_t base, translation;
 			_api->cairo_get_matrix(_context, base);
@@ -561,7 +563,7 @@ namespace ESSE
 		}
 		bool CairoDevice::BeginRendering(Graphica::TextureLoadAction load, const Color & clear_color) noexcept
 		{
-			if (_state) return false;
+			if (_state || !_context) return false;
 			if (load == Graphica::TextureLoadAction::Clear) {
 				auto dest = static_cast<CairoBitmap *>(_bitmap.Inner());
 				auto & data = dest->GetData()->GetDesc();
@@ -578,7 +580,7 @@ namespace ESSE
 		}
 		bool CairoDevice::EndRendering(void) noexcept
 		{
-			if (!_state) return false;
+			if (!_state || !_context) return false;
 			_api->cairo_surface_flush(static_cast<CairoBitmap *>(_bitmap.Inner())->GetSurface());
 			_state = false;
 			return true;
