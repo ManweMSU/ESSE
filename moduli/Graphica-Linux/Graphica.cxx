@@ -9,6 +9,103 @@ namespace ESSE
 {
 	namespace Linux
 	{
+		class ProxyDeviceContext2D : public Graphica::IDeviceContext2D
+		{
+			Windows::IWindow * _window;
+			oref<Graphica::IDeviceContextFactory2D> _factory;
+			oref<Graphica::IDevice> _device;
+			oref<Graphica::IDeviceContext> _deferred;
+			oref<Graphica::IDeviceContext2D> _inner;
+			oref<Graphica::IPresentationLayer> _layer;
+			Index2 _size;
+		public:
+			ProxyDeviceContext2D(Graphica::IDeviceContextFactory2D * parent, Windows::IWindow * window, Graphica::IDevice * device) : _window(window), _factory(parent), _device(device)
+			{
+				_deferred = _device->CreateDeferredDeviceContext();
+				if (!_deferred) throw OutOfMemoryException();
+				_inner = Vulkan::PrecreateContext2D(_deferred);
+				if (!_inner) throw OutOfMemoryException();
+				auto _size = window->GetClientSize();
+				Graphica::PresentationLayerDesc desc;
+				desc.Format = Graphica::PixelFormat::B8G8R8A8_unorm;
+				desc.Usage = Graphica::ResourceUsageRenderTarget | Graphica::ResourceUsageShaderRead;
+				desc.Width = _size.x;
+				desc.Height = _size.y;
+				_layer = _device->CreatePresentationLayer(window, desc);
+				if (!_layer) throw Exception();
+			}
+			virtual ~ProxyDeviceContext2D(void) override {}
+			virtual string ToStringE(ErrorContext & ectx) const noexcept override { return _inner->ToStringE(ectx); }
+			virtual void * DynamicCast(const void * cls, ErrorContext & ectx) noexcept override
+			{
+				if (cls == ESSE::Classes.Object || cls == ESSE::Classes.DynamicObject || cls == ESSE::Classes.IDeviceContext2D) {
+					Retain(); return this;
+				} else if (cls == ESSE::Classes.IDevice) {
+					_device->Retain(); return _device;
+				} else if (cls == ESSE::Classes.IDeviceContext) {
+					auto immctx = _device->GetPrimaryDeviceContext();
+					immctx->Retain(); return immctx;
+				} else if (cls == ESSE::Classes.IDeviceContextFactory2D) {
+					_factory->Retain(); return _factory;
+				} else { ErrorSet(ectx, Errores::ErrorNotImplemented); return 0; }
+			}
+			virtual const void * GetType(void) noexcept override { return ESSE::Classes.IDeviceContext2D; }
+			virtual void GetImplementationInfo(string & tech, uint32 & version_major, uint32 & version_minor) noexcept override { _inner->GetImplementationInfo(tech, version_major, version_minor); }
+			virtual uint32 GetImplementationFeatures(void) noexcept override { return _inner->GetImplementationFeatures() | Graphica::DeviceContextPresentationContext; }
+			virtual oref<Graphica::IColorBrush> CreateSolidColorBrush(const Color & color) noexcept override { return _inner->CreateSolidColorBrush(color); }
+			virtual oref<Graphica::IColorBrush> CreateGradientBrush(const Index2 & from, const Index2 & to, const Color * colors, const double * positions, uint count) noexcept override { return _inner->CreateGradientBrush(from, to, colors, positions, count); }
+			virtual oref<Graphica::IBitmapBrush> CreateBitmapBrush(Graphica::IBitmap * bitmap, const Rectangle & area) noexcept override { return _inner->CreateBitmapBrush(bitmap, area); }
+			virtual oref<Graphica::IBitmapBrush> CreateBitmapBrushCopy(Graphica::IBitmapBrush * bitmap, const Rectangle & area) noexcept override { return _inner->CreateBitmapBrushCopy(bitmap, area); }
+			virtual oref<Graphica::IBitmapBrush> CreateTileBrush(Graphica::IBitmap * bitmap, const Rectangle & area) noexcept override { return _inner->CreateTileBrush(bitmap, area); }
+			virtual oref<Graphica::IBitmapBrush> CreateTileBrushCopy(Graphica::IBitmapBrush * bitmap, const Rectangle & area) noexcept override { return _inner->CreateTileBrushCopy(bitmap, area); }
+			virtual oref<Graphica::IBitmapBrush> CreateTextureBrush(Graphica::ITexture * texture, Graphica::TextureAlphaMode mode) noexcept override { return _inner->CreateTextureBrush(texture, mode); }
+			virtual oref<Graphica::IBlurEffectBrush> CreateBlurEffectBrush(double sigma) noexcept override { return _inner->CreateBlurEffectBrush(sigma); }
+			virtual oref<Graphica::IInversionEffectBrush> CreateInversionEffectBrush(void) noexcept override { return _inner->CreateInversionEffectBrush(); }
+			virtual oref<Graphica::ILayerBacking> CreateLayerBackingStorage(void) noexcept override { return _inner->CreateLayerBackingStorage(); }
+			virtual oref<Graphica::IGlyphRun> CreateGlyphRun(Graphica::IFont ** fonts, const uint * glyphs, const double * px, const double * py, const Color * colors, uint count, const double * transform) noexcept override { return _inner->CreateGlyphRun(fonts, glyphs, px, py, colors, count, transform); }
+			virtual void PushClip(const Rectangle & rect) noexcept override { _inner->PushClip(rect); }
+			virtual void PopClip(void) noexcept override { _inner->PopClip(); }
+			virtual bool BeginLayerAlpha(Graphica::ILayerBacking * layer, const Rectangle & rect) noexcept override { return _inner->BeginLayerAlpha(layer, rect); }
+			virtual bool BeginLayer(Graphica::ILayerBacking * layer, const Rectangle & rect, double opacity) noexcept override { return _inner->BeginLayer(layer, rect, opacity); }
+			virtual void EndLayer(Graphica::ILayerBacking * layer) noexcept override { _inner->EndLayer(layer); }
+			virtual void Render(Graphica::IBrush * brush, const Rectangle & at) noexcept override { _inner->Render(brush, at); }
+			virtual void RenderPolyline(const double * px, const double * py, uint count, bool closed, Graphica::IBrush * brush, double width) noexcept override { _inner->RenderPolyline(px, py, count, closed, brush, width); }
+			virtual void RenderPolygon(const double * px, const double * py, uint count, Graphica::IBrush * brush) noexcept override { _inner->RenderPolygon(px, py, count, brush); }
+			virtual void RenderGlyphRun(Graphica::IGlyphRun * run, const Index2 & at) noexcept override { _inner->RenderGlyphRun(run, at); }
+			virtual bool BeginRendering(Graphica::TextureLoadAction load, const Color & clear_color) noexcept override
+			{
+				if (!_window) return false;
+				auto size = _window->GetClientSize();
+				if (_size != size) {
+					if (!_layer->ResizeSurface(size.x, size.y)) return false;
+					_size = size;
+				}
+				auto surface = _layer->QuerySurface();
+				if (!surface) return false;
+				Graphica::RenderTargetViewDesc rtvd;
+				rtvd.Texture = surface;
+				rtvd.LoadAction = load;
+				rtvd.ClearValue[3] = float(clear_color.a) / 255.0f;
+				rtvd.ClearValue[0] = float(clear_color.r) * rtvd.ClearValue[3] / 255.0f;
+				rtvd.ClearValue[1] = float(clear_color.g) * rtvd.ClearValue[3] / 255.0f;
+				rtvd.ClearValue[2] = float(clear_color.b) * rtvd.ClearValue[3] / 255.0f;
+				return _deferred->BeginRenderingPass2D(rtvd);
+			}
+			virtual bool EndRendering(void) noexcept override
+			{
+				if (!_deferred->EndCurrentPass()) return false;
+				_device->GetPrimaryDeviceContext()->Flush();
+				if (!_device->GetPrimaryDeviceContext()->SubmitDeferredContext(_deferred)) return false;
+				return _layer->Present();
+			}
+			void Invalidate(void) noexcept { _window = 0; }
+		};
+		class ProxyContextClass : public Windows::IWindowExtensionClass
+		{
+		public:
+			virtual bool ExtensionAttached(Windows::IWindow * window, Object * extension) noexcept override { return true; }
+			virtual void ExtensionDetached(Windows::IWindow * window, Object * extension) noexcept override { static_cast<ProxyDeviceContext2D *>(extension)->Invalidate(); }
+		};
 		#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
 		class X11CairoContextClass : public Windows::IWindowExtensionClass
 		{
@@ -23,6 +120,7 @@ namespace ESSE
 			oref<Cairo::CairoAPI> _cairo_api;
 			oref<Cairo::FontConfigAPI> _fc_api;
 			oref<Cairo::FreeTypeAPI> _ft_api;
+			oref<ProxyContextClass> _proxy_class;
 			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
 			oref<X11CairoContextClass> _x11_cairo_class;
 			#endif
@@ -48,9 +146,17 @@ namespace ESSE
 				ErrorContext ectx; ErrorClear(ectx);
 				auto window = owrap(reinterpret_cast<Windows::IWindow *>(presentor->DynamicCast(ESSE::Classes.IWindow, ectx)));
 				if (ErrorTest(ectx)) return 0;
+				if (_proxy_class) window->RemoveExtension(_proxy_class);
+				#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+				if (_x11_cairo_class) window->RemoveExtension(_x11_cairo_class);
+				#endif
 				if (device) {
-					// TODO: IMPLEMENT WITH VULKAN
-					return 0;
+					try {
+						if (!_proxy_class) _proxy_class = owrap(new ProxyContextClass);
+						auto context = oref<Graphica::IDeviceContext2D>::CreateOwned(new ProxyDeviceContext2D(this, window, device));
+						if (!window->AddExtension(context, _proxy_class)) throw InvalidStateException();
+						return context;
+					} catch (...) { return 0; }
 				} else {
 					// TODO: IMPLEMENT WITH CAIRO-WAYLAND
 					#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
@@ -58,9 +164,9 @@ namespace ESSE
 					auto wx11 = reinterpret_cast<X11::IX11Window *>(window->DynamicCast(Classes::X11_Window, ectx));
 					if (!ErrorTest(ectx)) try {
 						if (!_x11_cairo_class) _x11_cairo_class = owrap(new X11CairoContextClass);
-						auto device = oref<Graphica::IDeviceContext2D>::CreateOwned(new Cairo::CairoDeviceX11(_cairo_api, this, window, wx11));
-						if (!window->AddExtension(device, _x11_cairo_class)) throw InvalidStateException();
-						return device;
+						auto context = oref<Graphica::IDeviceContext2D>::CreateOwned(new Cairo::CairoDeviceX11(_cairo_api, this, window, wx11));
+						if (!window->AddExtension(context, _x11_cairo_class)) throw InvalidStateException();
+						return context;
 					} catch (...) { return 0; }
 					#endif
 					return 0;

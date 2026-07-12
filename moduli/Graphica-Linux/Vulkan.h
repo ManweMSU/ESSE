@@ -43,6 +43,7 @@ namespace ESSE
 
 		oref<DataBlock> PrecompileShaders(const void * data, uintptr length, const VulkanInputDesc & desc, oref<DataBlock> & log, ErrorContext & ectx) noexcept;
 		VulkanDeviceClass GetVulkanDeviceClass(Graphica::IDevice * device) noexcept;
+		oref<Graphica::IDeviceContext2D> PrecreateContext2D(Graphica::IDeviceContext * context) noexcept;
 
 		oref<Graphica::IDeviceFactory> CreateDeviceFactory(ErrorContext & ectx) noexcept;
 	}

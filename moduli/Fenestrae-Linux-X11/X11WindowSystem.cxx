@@ -540,7 +540,8 @@ namespace ESSE
 						use_visual = _visual = use_info.visual;
 						attr.colormap = api->XCreateColormap(display, root, use_visual, AllocNone);
 						attr.background_pixel = attr.border_pixel = 0;
-						use_mask |= CWColormap | CWBorderPixel | CWBackPixel;
+						attr.bit_gravity = StaticGravity;
+						use_mask |= CWColormap | CWBorderPixel | CWBackPixel | CWBitGravity;
 					} else _effective_style &= (Windows::WindowStyleTransparent | Windows::WindowStyleSetBlurBehind);
 				}
 				if (_effective_style & Windows::WindowStyleSetBlurBehind) {

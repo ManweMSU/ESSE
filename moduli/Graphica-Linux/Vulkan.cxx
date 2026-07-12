@@ -2,6 +2,7 @@
 #include "Vulkan2D.h"
 #include "DeviceCairo.h"
 #include <Cor/CorVirtualMemory.h>
+#include <Cor-Linux/CorLinuxClasses.h>
 #include <Graphica/Graphica.h>
 #include <Formationes/Archive.h>
 
@@ -9,13 +10,20 @@
 #define VULKAN_HPP_NO_DEFAULT_DISPATCHER
 #define VULKAN_HPP_NO_EXCEPTIONS
 #include <glslang/glslang_c_interface.h>
+#include <vulkan/vulkan.h>
+#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
+	// TODO: IMPLEMENT WAYLAND
+#endif
+#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+	#define VK_USE_PLATFORM_XLIB_KHR
+	#include <Fenestrae/Fenestrae.h>
+	#include <Fenestrae-Linux-X11/X11WindowSystem.h>
+	typedef ESSE::X11::Display Display;
+	typedef ESSE::X11::Window Window;
+	typedef ESSE::X11::VisualID VisualID;
+	#include <vulkan/vulkan_xlib.h>
+#endif
 #include <vulkan/vulkan.hpp>
-// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
-// #include <vulkan/vulkan_wayland.h>
-// #endif
-// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
-// #include <vulkan/vulkan_xlib.h>
-// #endif
 #include <unistd.h>
 #include <semaphore.h>
 #include <atomic>
@@ -33,23 +41,26 @@ namespace ESSE
 		constexpr uintptr _vk_constant_buffer_size = 0x10000;
 
 		const char * _vk_desired_interface_extensions[] {
-			// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
-			// VK_KHR_SURFACE_EXTENSION_NAME,
-			// VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-			// #endif
-			// #ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
-			// VK_KHR_SURFACE_EXTENSION_NAME,
-			// VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
-			// #endif
+			#if defined(ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND) || defined(ESSE_MODULUS_FENESTRARUM_LINUX_X11)
+				#define ESSE_VULKAN_PRESENTATION
+				VK_KHR_SURFACE_EXTENSION_NAME,
+			#endif
+			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND
+				// TODO: IMPLEMENT WAYLAND
+				// VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+			#endif
+			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+				VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
+			#endif
 			VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 		};
 		const char * _vk_debug_interface_extensions[] {
 			VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		};
 		const char * _vk_desired_device_extensions[] {
-			// #if defined(ESSE_MODULUS_FENESTRARUM_LINUX_WAYLAND) || defined(ESSE_MODULUS_FENESTRARUM_LINUX_X11)
-			// VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-			// #endif
+			#ifdef ESSE_VULKAN_PRESENTATION
+				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+			#endif
 			VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 			VK_KHR_MAINTENANCE_1_EXTENSION_NAME,
 			VK_KHR_MAINTENANCE_2_EXTENSION_NAME,
@@ -485,6 +496,9 @@ namespace ESSE
 		uint _default_device_allowed	= VulkanDeviceAny;
 		uint _device_enumeration_mask	= VulkanDeviceAny;
 		bool _device_validation_layer	= false;
+		#ifdef ESSE_VULKAN_PRESENTATION
+		oref<Windows::IWindowExtensionClass> _common_vk_surface_class;
+		#endif
 
 		class VKDeviceResourceHandle : public IDeviceResourceHandle
 		{
@@ -727,6 +741,7 @@ namespace ESSE
 		{
 			friend class VKPass;
 			friend class VKQueue;
+			friend class VKPresentationLayer;
 			friend class VKDevice;
 			friend class VKDeviceImmediateContext;
 			friend class VKDeviceContext2D;
@@ -1949,7 +1964,7 @@ namespace ESSE
 			uintptr _circular;
 			array<VkFence> _completion;
 			object_array<VKPass> _submitted;
-			//oref<Object> _current_swapchain; TODO: REVISE
+			ObjectDictionary<Object *, Object> _swapchains_retained;
 		private:
 			oref<VKSamplerState> _internal_create_sampler_stub(void) noexcept
 			{
@@ -2005,7 +2020,7 @@ namespace ESSE
 				_api->Dispatch.vkQueueWaitIdle(_queue);
 				_layout.Clear(); _allocation_pools.Clear();
 				_constant_pool.Clear(); _submitted.Clear();
-				// _current_swapchain.Clear(); // TODO: REWORK (POSSIBLY)
+				_swapchains_retained.Clear();
 			}
 			oref<VKPass> CreatePass(void) noexcept
 			{
@@ -2557,13 +2572,11 @@ namespace ESSE
 					}
 				} else return true;
 			}
-			void ClearSwapChain(void) noexcept
-			{
-				_api->Dispatch.vkQueueWaitIdle(_queue);
-				// _current_swapchain.Clear(); // TODO: REWORK (POSSIBLY)
-			}
+			bool CommitSwapChain(Object * host_layer, Object * swapchain) noexcept { try { _swapchains_retained.Update(host_layer, swapchain); return true; } catch (...) { return false; } }
+			void RemoveSwapChain(Object * host_layer) noexcept { _api->Dispatch.vkQueueWaitIdle(_queue); _swapchains_retained.Remove(host_layer); }
 			VKDeviceAPI * GetAPI(void) noexcept { return _api; }
 			uint GetQueueIndex(void) noexcept { return _queue_index; }
+			VkQueue GetQueue(void) noexcept { return _queue; }
 		};
 		class VKLayerBacking : public ILayerBacking
 		{
@@ -3838,7 +3851,359 @@ namespace ESSE
 				return true;
 			}
 		};
-		
+
+		#ifdef ESSE_VULKAN_PRESENTATION
+		class VKSurface : public Object
+		{
+		public:
+			virtual VkSurfaceKHR GetSurface(void) noexcept = 0;
+			virtual bool EnableEDR(void) noexcept = 0;
+			virtual bool GetFullscreenState(void) noexcept = 0;
+			virtual void SetFullscreenState(bool set) noexcept = 0;
+			virtual void Invalidate(void) noexcept = 0;
+		};
+		class VKSurfaceClass : public Windows::IWindowExtensionClass
+		{
+		public:
+			virtual bool ExtensionAttached(Windows::IWindow * window, Object * extension) noexcept override { return true; }
+			virtual void ExtensionDetached(Windows::IWindow * window, Object * extension) noexcept override { static_cast<VKSurface *>(extension)->Invalidate(); }
+		};
+		class VKSwapChain : public Object
+		{
+			oref<VKDeviceAPI> _api;
+			oref<VKSurface> _surface;
+			array<VkImage> _images;
+			array<VkImageLayout> _image_layouts;
+			VkSwapchainKHR _swapchain;
+			VkFence _fence;
+			uint _width, _height;
+			bool _allocated;
+		public:
+			VKSwapChain(VKDeviceAPI * api, VKSurface * surface) : _api(api), _surface(surface), _images(1), _image_layouts(1), _swapchain(0), _fence(0), _allocated(false) {}
+			virtual ~VKSwapChain(void) override
+			{
+				if (_swapchain) _api->Dispatch.vkDestroySwapchainKHR(_api->Device, _swapchain, &_api->Base->Allocator);
+				if (_fence) _api->Dispatch.vkDestroyFence(_api->Device, _fence, &_api->Base->Allocator);
+			}
+			bool Initialize(VKSwapChain * previous, VkPhysicalDevice device, VkFormat format, uint window_style, uint desired_attribute, uint & effective_attribute) noexcept
+			{
+				VkFenceCreateInfo fence_info;
+				fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+				fence_info.pNext = 0;
+				fence_info.flags = 0;
+				if (_api->Dispatch.vkCreateFence(_api->Device, &fence_info, &_api->Base->Allocator, &_fence) != VK_SUCCESS) return false;
+				VkSurfaceCapabilitiesKHR capabilities;
+				array<VkSurfaceFormatKHR> formats(1);
+				array<VkPresentModeKHR> modes(1);
+				auto surface = _surface->GetSurface();
+				try {
+					uint count;
+					if (_api->Dispatch.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities) < 0) return false;
+					if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &count, 0) < 0) return false;
+					formats.SetLength(count);
+					if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &count, formats) < 0) return false;
+					if (count < formats.GetLength()) formats.SetLength(count);
+					if (_api->Dispatch.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, 0) < 0) return false;
+					modes.SetLength(count);
+					if (_api->Dispatch.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, modes) < 0) return false;
+					if (count < modes.GetLength()) modes.SetLength(count);
+					SortArray(modes);
+				} catch (...) { return false; }
+				bool window_needs_alpha = (window_style & (Windows::WindowStyleTransparent | Windows::WindowStyleSetBlurBehind)) != 0;
+				if (!formats.GetLength() || !modes.GetLength()) return false;
+				if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)) return false;
+				bool ffound = false;
+				VkSwapchainCreateInfoKHR swapchain_info;
+				swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+				swapchain_info.pNext = 0;
+				swapchain_info.flags = 0;
+				swapchain_info.surface = surface;
+				swapchain_info.minImageCount = 2;
+				if (capabilities.maxImageCount && swapchain_info.minImageCount > capabilities.maxImageCount) swapchain_info.minImageCount = capabilities.maxImageCount;
+				if (capabilities.minImageCount > swapchain_info.minImageCount) swapchain_info.minImageCount = capabilities.minImageCount;
+				for (auto & f : formats) if (f.format == format) {
+					swapchain_info.imageFormat = f.format;
+					swapchain_info.imageColorSpace = f.colorSpace;
+					ffound = true; break;
+				}
+				if (!ffound) return false;
+				swapchain_info.imageExtent = capabilities.currentExtent;
+				swapchain_info.imageArrayLayers = 1;
+				swapchain_info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+				swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+				swapchain_info.queueFamilyIndexCount = 0;
+				swapchain_info.pQueueFamilyIndices = 0;
+				swapchain_info.preTransform = capabilities.currentTransform;
+				effective_attribute = 0;
+				if (desired_attribute & WindowLayerAttributeAlphaChannelIgnore) {
+					if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+						swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+						effective_attribute |= WindowLayerAttributeAlphaChannelIgnore;
+					} else return false;
+				} else if (desired_attribute & WindowLayerAttributeAlphaChannelPremultiplied) {
+					if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+						swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+						effective_attribute |= WindowLayerAttributeAlphaChannelPremultiplied;
+					} else return false;
+				} else if (desired_attribute & WindowLayerAttributeAlphaChannelStraight) {
+					if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) {
+						swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+						effective_attribute |= WindowLayerAttributeAlphaChannelStraight;
+					} else return false;
+				} else {
+					if (window_needs_alpha) {
+						if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+							effective_attribute |= WindowLayerAttributeAlphaChannelPremultiplied;
+						} else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+						} else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+							effective_attribute |= WindowLayerAttributeAlphaChannelIgnore;
+						} else return false;
+					} else {
+						if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+							effective_attribute |= WindowLayerAttributeAlphaChannelIgnore;
+						} else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+						} else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+							swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+							effective_attribute |= WindowLayerAttributeAlphaChannelPremultiplied;
+						} else return false;
+					}
+				}
+				swapchain_info.presentMode = modes[0];
+				swapchain_info.clipped = VK_TRUE;
+				swapchain_info.oldSwapchain = previous ? previous->_swapchain : 0;
+				if (_api->Dispatch.vkCreateSwapchainKHR(_api->Device, &swapchain_info, &_api->Base->Allocator, &_swapchain) != VK_SUCCESS) return false;
+				_width = swapchain_info.imageExtent.width;
+				_height = swapchain_info.imageExtent.height;
+				try {
+					uint32 count;
+					if (_api->Dispatch.vkGetSwapchainImagesKHR(_api->Device, _swapchain, &count, 0) < 0) return false;
+					_images.SetLength(count);
+					if (_api->Dispatch.vkGetSwapchainImagesKHR(_api->Device, _swapchain, &count, _images) < 0) return false;
+					if (count < _images.GetLength()) _images.SetLength(count);
+					_image_layouts.SetLength(_images.GetLength());
+					for (auto & l : _image_layouts) l = VK_IMAGE_LAYOUT_UNDEFINED;
+				} catch (...) { return false; }
+				return true;
+			}
+			VkSwapchainKHR & GetSwapchain(void) noexcept { return _swapchain; }
+			VkResult AcquireNextImage(uint & index) noexcept { return _api->Dispatch.vkAcquireNextImageKHR(_api->Device, _swapchain, 1000000000UL, 0, _fence, &index); }
+			void QueryImage(uint index, VkImage & image, VkImageLayout *& layout) noexcept { image = _images[index]; layout = &_image_layouts[index]; }
+			bool ResetFence(void) noexcept { if (_api->Dispatch.vkResetFences(_api->Device, 1, &_fence) < 0) return false; else return true; }
+			bool WaitFence(void) noexcept { return _api->Dispatch.vkWaitForFences(_api->Device, 1, &_fence, VK_TRUE, 1000000000UL) == VK_SUCCESS; }
+			bool IsAllocated(void) noexcept { return _allocated; }
+			void SetAllocated(bool allocated) noexcept { _allocated = allocated; }
+			uint GetWidth(void) noexcept { return _width; }
+			uint GetHeight(void) noexcept { return _height; }
+		};
+		class VKPresentationLayer : public IPresentationLayer
+		{
+			oref<VKQueue> _queue;
+			Graphica::IDevice * _parent;
+			uint _window_style;
+			oref<VKSurface> _surface;
+			oref<VKSwapChain> _swapchain;
+			oref<VKTexture> _intermediate;
+			uint _usage, _desired_attributes, _effective_attributes;
+			PixelFormat _esse_format;
+			VkPhysicalDevice _device;
+			VkFormat _vk_format;
+		private:
+			bool _reallocate_swapchain(void) noexcept
+			{
+				auto swapchain = owrap(new (std::nothrow) VKSwapChain(_queue->GetAPI(), _surface));
+				if (!swapchain || !swapchain->Initialize(_swapchain, _device, _vk_format, _window_style, _desired_attributes, _effective_attributes)) return false;
+				if (_desired_attributes & WindowLayerAttributeExtendedDynamicRange) {
+					if (!_surface->EnableEDR()) return false;
+					_effective_attributes |= WindowLayerAttributeExtendedDynamicRange;
+				}
+				_swapchain = swapchain;
+				return true;
+			}
+		public:
+			VKPresentationLayer(VKQueue * queue, IDevice * parent_device, VkPhysicalDevice physical) : _queue(queue), _parent(parent_device), _device(physical) {}
+			virtual ~VKPresentationLayer(void) override { if (_swapchain) _queue->RemoveSwapChain(this); }
+			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"VKPresentationLayer"; ESSE_TRY_OUTRO(string()) }
+			virtual IDevice * GetParentDevice(void) noexcept override { return _parent; }
+			virtual bool Present(void) noexcept override
+			{
+				uint num_retr = 0;
+				VkImage image;
+				VkImageLayout * layout;
+				uint image_index;
+				while (true) {
+					num_retr++;
+					if (_swapchain->IsAllocated() || !_swapchain->ResetFence()) return false;
+					auto status = _swapchain->AcquireNextImage(image_index);
+					if (status < 0 || status == VK_TIMEOUT) return false;
+					if (status == VK_SUBOPTIMAL_KHR) {
+						if (num_retr > 3) return false;
+						_queue->RemoveSwapChain(this);
+						if (!_reallocate_swapchain()) return false;
+						continue;
+					}
+					_swapchain->SetAllocated(true);
+					_swapchain->QueryImage(image_index, image, layout);
+					if (!_swapchain->WaitFence()) return false;
+					break;
+				}
+				_queue->CommitSwapChain(this, _swapchain);
+				_parent->GetPrimaryDeviceContext()->Flush();
+				auto pass = _queue->CreatePass();
+				if (!pass) return false;
+				auto api = _queue->GetAPI();
+				try { pass->retain.AddElement(_intermediate.Inner()); pass->retain.AddElement(_swapchain.Inner()); } catch (...) {}
+				VkImageMemoryBarrier barrier[2];
+				barrier[0].sType = barrier[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+				barrier[0].pNext = barrier[1].pNext = 0;
+				barrier[0].srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+				barrier[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+				barrier[1].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+				barrier[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				barrier[0].oldLayout = _intermediate->_current_layout;
+				barrier[0].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+				barrier[1].oldLayout = *layout;
+				barrier[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+				barrier[0].srcQueueFamilyIndex = barrier[0].dstQueueFamilyIndex = _queue->GetQueueIndex();
+				barrier[1].srcQueueFamilyIndex = barrier[1].dstQueueFamilyIndex = _queue->GetQueueIndex();
+				barrier[0].image = _intermediate->_image;
+				barrier[1].image = image;
+				barrier[0].subresourceRange.aspectMask = barrier[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				barrier[0].subresourceRange.baseArrayLayer = barrier[0].subresourceRange.baseMipLevel = 0;
+				barrier[1].subresourceRange.baseArrayLayer = barrier[1].subresourceRange.baseMipLevel = 0;
+				barrier[0].subresourceRange.layerCount = barrier[0].subresourceRange.levelCount = 1;
+				barrier[1].subresourceRange.layerCount = barrier[1].subresourceRange.levelCount = 1;
+				api->Dispatch.vkCmdPipelineBarrier(pass->buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, 0, 0, 0, 2, barrier);
+				_intermediate->_current_layout = VK_IMAGE_LAYOUT_GENERAL;
+				VkImageBlit blt;
+				blt.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				blt.srcSubresource.baseArrayLayer = 0;
+				blt.srcSubresource.layerCount = 1;
+				blt.srcSubresource.mipLevel = 0;
+				blt.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				blt.dstSubresource.baseArrayLayer = 0;
+				blt.dstSubresource.layerCount = 1;
+				blt.dstSubresource.mipLevel = 0;
+				blt.srcOffsets[0].x = blt.srcOffsets[0].y = blt.srcOffsets[0].z = blt.dstOffsets[0].x = blt.dstOffsets[0].y = blt.dstOffsets[0].z = 0;
+				blt.srcOffsets[1].x = _intermediate->_desc.Width;
+				blt.srcOffsets[1].y = _intermediate->_desc.Height;
+				blt.srcOffsets[1].z = 1;
+				blt.dstOffsets[1].x = _swapchain->GetWidth();
+				blt.dstOffsets[1].y = _swapchain->GetHeight();
+				blt.dstOffsets[1].z = 1;
+				api->Dispatch.vkCmdBlitImage(pass->buffer, _intermediate->_image, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blt, VK_FILTER_LINEAR);
+				barrier[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+				barrier[0].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+				barrier[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+				barrier[0].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+				barrier[0].srcQueueFamilyIndex = barrier[0].dstQueueFamilyIndex = _queue->GetQueueIndex();
+				barrier[0].image = image;
+				barrier[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				barrier[0].subresourceRange.baseArrayLayer = barrier[0].subresourceRange.baseMipLevel = 0;
+				barrier[0].subresourceRange.layerCount = barrier[0].subresourceRange.levelCount = 1;
+				api->Dispatch.vkCmdPipelineBarrier(pass->buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, 0, 0, 0, 1, barrier);
+				*layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+				if (!_queue->SubmitPass(pass)) return false;
+				VkPresentInfoKHR present;
+				present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+				present.pNext = 0;
+				present.waitSemaphoreCount = 0;
+				present.pWaitSemaphores = 0;
+				present.swapchainCount = 1;
+				present.pSwapchains = &_swapchain->GetSwapchain();
+				present.pImageIndices = &image_index;
+				present.pResults = 0;
+				auto status = api->Dispatch.vkQueuePresentKHR(_queue->GetQueue(), &present);
+				_swapchain->SetAllocated(false);
+				return (status >= 0);
+			}
+			virtual oref<ITexture> QuerySurface(void) noexcept override { return _intermediate.Inner(); }
+			virtual bool ResizeSurface(uint32 width, uint32 height) noexcept override
+			{
+				auto w = max(width, 1U), h = max(height, 1U);
+				if (_intermediate->GetWidth() == w && _intermediate->GetHeight() == h) return true;
+				TextureDesc desc;
+				desc.Type = TextureType::Type2D;
+				desc.Format = _esse_format;
+				desc.Width = w;
+				desc.Height = h;
+				desc.MipmapCount = 1;
+				desc.Usage = _usage;
+				desc.MemoryPool = ResourceMemoryPool::Regular;
+				auto texture = _parent->CreateTexture(desc);
+				if (!texture) return false;
+				_intermediate = static_cast<VKTexture *>(texture.Inner());
+				return true;
+			}
+			virtual bool SwitchToFullscreen(void) noexcept override { _surface->SetFullscreenState(true); return _surface->GetFullscreenState(); }
+			virtual bool SwitchToWindow(void) noexcept override { _surface->SetFullscreenState(false); return !_surface->GetFullscreenState(); }
+			virtual bool IsFullscreen(void) noexcept override { return _surface->GetFullscreenState(); }
+			virtual uint GetLayerAttributes(void) noexcept override { return _effective_attributes; }
+			bool Initialize(Windows::IWindow * window, VKSurface * surface, const PresentationLayerDesc & desc) noexcept
+			{
+				_window_style = window->GetEffectiveStyle(Windows::CreateWindowDescType::CreateWindowDesc);
+				_surface = surface;
+				_usage = desc.Usage & ~WindowLayerAttributeMask;
+				_desired_attributes = desc.Usage & WindowLayerAttributeMask;
+				_esse_format = desc.Format;
+				_vk_format = CreateVkFormat(_esse_format);
+				if (_vk_format == VK_FORMAT_UNDEFINED) return false;
+				TextureDesc tdesc;
+				tdesc.Type = TextureType::Type2D;
+				tdesc.Format = desc.Format;
+				tdesc.Width = max(desc.Width, 1U);
+				tdesc.Height = max(desc.Height, 1U);
+				tdesc.MipmapCount = 1;
+				tdesc.Usage = desc.Usage;
+				tdesc.MemoryPool = ResourceMemoryPool::Regular;
+				auto texture = _parent->CreateTexture(tdesc);
+				if (!texture) return false;
+				_intermediate = static_cast<VKTexture *>(texture.Inner());
+				if (!_reallocate_swapchain()) return false;
+				return true;
+			}
+		};
+		#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+		class VKX11Surface : public VKSurface
+		{
+			oref<VKDeviceAPI> _api;
+			VkSurfaceKHR _surface;
+			Windows::IWindow * _window;
+			X11::IX11Window * _window_x11;
+		public:
+			VKX11Surface(VKDeviceAPI * api) : _api(api), _surface(0), _window(0), _window_x11(0) {}
+			virtual ~VKX11Surface(void) override { if (_surface) _api->Base->Dispatch.vkDestroySurfaceKHR(_api->Base->Instance, _surface, &_api->Base->Allocator); }
+			virtual VkSurfaceKHR GetSurface(void) noexcept override { return _surface; }
+			virtual bool EnableEDR(void) noexcept override { return false; }
+			virtual bool GetFullscreenState(void) noexcept override { return _window_x11 ? _window_x11->GetFullscreenState() : false; }
+			virtual void SetFullscreenState(bool set) noexcept override { if (_window_x11) _window_x11->SetFullscreenState(set); }
+			virtual void Invalidate(void) noexcept override { _window = 0; _window_x11 = 0; }
+			bool Initialize(VkPhysicalDevice device, VKQueue * queue, Windows::IWindow * window, X11::IX11Window * window_x11) noexcept
+			{
+				if (!_api->Dispatch.vkCreateXlibSurfaceKHR || !_api->Dispatch.vkCreateSwapchainKHR || !_api->Dispatch.vkGetPhysicalDeviceXlibPresentationSupportKHR) return false;
+				ErrorContext ectx; ErrorClear(ectx);
+				auto ws_x11 = reinterpret_cast<X11::IX11WindowSystem *>(window_x11->GetWindowSystem()->DynamicCast(Linux::Classes::X11_WindowSystem, ectx));
+				if (ErrorTest(ectx)) return false;
+				if (!_api->Dispatch.vkGetPhysicalDeviceXlibPresentationSupportKHR(device, queue->GetQueueIndex(), ws_x11->GetConnection()->GetXDisplay(), window_x11->GetVisual()->visualid)) return false;
+				VkXlibSurfaceCreateInfoKHR info;
+				info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+				info.pNext = 0;
+				info.flags = 0;
+				info.dpy = ws_x11->GetConnection()->GetXDisplay();
+				info.window = window_x11->GetHandle();
+				if (_api->Dispatch.vkCreateXlibSurfaceKHR(_api->Base->Instance, &info, &_api->Base->Allocator, &_surface) != VK_SUCCESS) return 0;
+				_window = window;
+				_window_x11 = window_x11;
+				return true;
+			}
+		};
+		#endif
+		#endif
+
 		class VKDeviceDeferredContext : public IDeviceContext
 		{
 			friend class VKDeviceImmediateContext;
@@ -4014,6 +4379,7 @@ namespace ESSE
 			virtual bool AcquireSharedResource(IDeviceResource * rsrc) noexcept override { return false; }
 			virtual bool TryAcquireSharedResource(IDeviceResource * rsrc, uint32 timeout) noexcept override { return false; }
 			virtual bool ReleaseSharedResource(IDeviceResource * rsrc) noexcept override { return false; }
+			void PrecreateContext2D(void) noexcept { if (!_plain_context) try { _plain_context = owrap(new VKDeviceContext2D(_queue, _parent_device, this)); } catch (...) {} }
 		};
 		class VKDeviceImmediateContext : public IDeviceContext
 		{
@@ -4274,6 +4640,7 @@ namespace ESSE
 				_current_pass_cancel();
 				if (_plain_context) _plain_context->_finalize();
 			}
+			void PrecreateContext2D(void) noexcept { if (!_plain_context) try { _plain_context = owrap(new VKDeviceContext2D(_queue, _parent_device, this)); } catch (...) {} }
 		};
 		class VKDevice : public IDevice
 		{
@@ -5091,37 +5458,47 @@ namespace ESSE
 						return prop.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
 					} else return false;
 				} else if (usage == PixelFormatUsage::WindowSurface) {
-					// TODO: REWORK
-					// auto vk_format = CreateVkFormat(format);
-					// if (vk_format == VK_FORMAT_UNDEFINED) return false;
-					// if (!_api->Dispatch.vkCreateXlibSurfaceKHR || !_api->Dispatch.vkCreateSwapchainKHR) return false;
-					// SafePointer<X11::XServerConnection> con = X11::XServerConnection::Query();
-					// if (!con) return false;
-					// VkSurfaceKHR probe;
-					// VkXlibSurfaceCreateInfoKHR info;
-					// info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-					// info.pNext = 0;
-					// info.flags = 0;
-					// info.dpy = con->GetXDisplay();
-					// info.window = XDefaultRootWindow(con->GetXDisplay());
-					// if (_api->Dispatch.vkCreateXlibSurfaceKHR(_api->Base->Instance, &info, &_api->Base->Allocator, &probe) != VK_SUCCESS) return false;
-					// bool result = false;
-					// try {
-					// 	Array<VkSurfaceFormatKHR> formats(1);
-					// 	uint count;
-					// 	if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(_physical, probe, &count, 0) < 0) throw Exception();
-					// 	formats.SetLength(count);
-					// 	if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(_physical, probe, &count, formats) < 0) throw Exception();
-					// 	if (count < formats.Length()) formats.SetLength(count);
-					// 	for (auto & fmt : formats) if (fmt.format == vk_format) { result = true; break; }
-					// } catch (...) {}
-					// _api->Dispatch.vkDestroySurfaceKHR(_api->Base->Instance, probe, &_api->Base->Allocator);
-					// return result;
+					#ifdef ESSE_VULKAN_PRESENTATION
+						auto vk_format = CreateVkFormat(format);
+						if (vk_format == VK_FORMAT_UNDEFINED) return false;
+						auto ws = Windows::GetWindowSystem();
+						if (!ws) return false;
+						ErrorContext ectx;
+						// TODO: IMPLEMENT WAYLAND
+						#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+							ErrorClear(ectx);
+							auto ws_x11 = reinterpret_cast<X11::IX11WindowSystem *>(ws->DynamicCast(Linux::Classes::X11_WindowSystem, ectx));
+							if (!ErrorTest(ectx) && _api->Dispatch.vkCreateXlibSurfaceKHR && _api->Dispatch.vkCreateSwapchainKHR) {
+								auto xapi = ws_x11->GetConnection()->GetAPI();
+								auto display = ws_x11->GetConnection()->GetXDisplay();
+								VkSurfaceKHR probe;
+								VkXlibSurfaceCreateInfoKHR info;
+								info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+								info.pNext = 0;
+								info.flags = 0;
+								info.dpy = display;
+								info.window = xapi->XDefaultRootWindow(display);
+								if (_api->Dispatch.vkCreateXlibSurfaceKHR(_api->Base->Instance, &info, &_api->Base->Allocator, &probe) != VK_SUCCESS) return false;
+								bool result = false;
+								try {
+									array<VkSurfaceFormatKHR> formats(1);
+									uint count;
+									if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(_physical, probe, &count, 0) < 0) throw Exception();
+									formats.SetLength(count);
+									if (_api->Dispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(_physical, probe, &count, formats) < 0) throw Exception();
+									if (count < formats.GetLength()) formats.SetLength(count);
+									for (auto & fmt : formats) if (fmt.format == vk_format) { result = true; break; }
+								} catch (...) {}
+								_api->Dispatch.vkDestroySurfaceKHR(_api->Base->Instance, probe, &_api->Base->Allocator);
+								return result;
+							}
+						#endif
+					#endif
+					return false;
 				} else if (usage == PixelFormatUsage::RenderTarget2D || usage == PixelFormatUsage::VideoIO) {
 					return format == PixelFormat::B8G8R8A8_unorm;
 				} else return false;
 			}
-
 			virtual IDeviceContext * GetPrimaryDeviceContext(void) noexcept override { return _immediate_context; }
 			virtual oref<IDeviceContext> CreateDeferredDeviceContext(void) noexcept override { return oref<IDeviceContext>::CreateOwned(new (std::nothrow) VKDeviceDeferredContext(this, _dispatcher)); }
 			virtual oref<IShaderLibrary> LoadShaderLibraryFromData(const void * data, uintptr length, ErrorContext & ectx) noexcept override
@@ -5596,28 +5973,39 @@ namespace ESSE
 			}
 			virtual oref<IPresentationLayer> CreatePresentationLayer(DynamicObject * presentor, const PresentationLayerDesc & desc) noexcept override
 			{
-				// TODO: IMPLEMENT
-				// if (!window || !IsColorFormat(desc.Format)) return 0;
-				// if (desc.Usage & ~(ResourceUsageRenderTarget | ResourceUsageShaderRead)) return 0;
-				// SafePointer<VKWindowLayer> layer = new (std::nothrow) VKWindowLayer(_api, this, false);
-				// SafePointer<VKWindowLayer::VKSurface> surface = new (std::nothrow) VKWindowLayer::VKSurface;
-				// if (!layer || !surface) return 0;
-				// if (!_api->Dispatch.vkCreateXlibSurfaceKHR || !_api->Dispatch.vkCreateSwapchainKHR) return 0;
-				// layer->_x11 = X11::XServerConnection::Query();
-				// layer->_window = static_cast<X11::IXWindow *>(window);
-				// layer->_surface = surface;
-				// layer->_surface->api = _api;
-				// if (!layer->_x11) return 0;
-				// VkXlibSurfaceCreateInfoKHR info;
-				// info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-				// info.pNext = 0;
-				// info.flags = 0;
-				// info.dpy = layer->_x11->GetXDisplay();
-				// info.window = layer->_window->GetWindow();
-				// if (_api->Dispatch.vkCreateXlibSurfaceKHR(_api->Base->Instance, &info, &_api->Base->Allocator, &layer->_surface->surface) != VK_SUCCESS) return 0;
-				// if (!layer->Initialize(desc)) return 0;
-				// layer->Retain();
-				// return layer;
+				#ifdef ESSE_VULKAN_PRESENTATION
+					if (!presentor || !IsColorFormat(desc.Format)) return 0;
+					if (desc.Usage & ~(ResourceUsageRenderTarget | ResourceUsageShaderRead)) return 0;
+					ErrorContext ectx; ErrorClear(ectx);
+					auto window = owrap(reinterpret_cast<Windows::IWindow *>(presentor->DynamicCast(Classes.IWindow, ectx)));
+					if (ErrorTest(ectx)) return 0;
+					VKSurfaceClass * vk_surface_class;
+					Memory::AcquireRootLock();
+					if (!_common_vk_surface_class) _common_vk_surface_class = oref<Windows::IWindowExtensionClass>::CreateOwned(new (std::nothrow) VKSurfaceClass);
+					vk_surface_class = static_cast<VKSurfaceClass *>(_common_vk_surface_class.Inner());
+					Memory::ReleaseRootLock();
+					if (!vk_surface_class) return 0;
+					oref<VKSurface> vk_surface;
+					// TODO: IMPLEMENT WAYLAND
+					#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
+						ErrorClear(ectx);
+						auto window_x11 = reinterpret_cast<X11::IX11Window *>(presentor->DynamicCast(Linux::Classes::X11_Window, ectx));
+						if (!ErrorTest(ectx)) {
+							auto vk_x11_surface = owrap(new (std::nothrow) VKX11Surface(_api));
+							if (!vk_x11_surface || !vk_x11_surface->Initialize(_physical, _dispatcher, window, window_x11)) return 0;
+							vk_surface = vk_x11_surface.Inner();
+						}
+					#endif
+					if (!vk_surface) return 0;
+					window->RemoveExtension(vk_surface_class);
+					if (!window->AddExtension(vk_surface, vk_surface_class)) return 0;
+					auto layer = owrap(new (std::nothrow) VKPresentationLayer(_dispatcher, this, _physical));
+					if (!layer) { window->RemoveExtension(vk_surface_class); return 0; }
+					if (!layer->Initialize(window, vk_surface, desc)) { window->RemoveExtension(vk_surface_class); return 0; }
+					return oref<IPresentationLayer>(layer);
+				#else
+					return 0;
+				#endif
 			}
 			VkPhysicalDevice GetPhysicalDevice(void) noexcept { return _physical; }
 			uint32 GetQueueFamilyIndex(void) noexcept { return _queue_family_index; }
@@ -5772,8 +6160,6 @@ namespace ESSE
 			} catch (...) { return 0; }
 			return dev->_common;
 		}
-
-		// TODO: IMPLEMENT PRESENTATION
 
 		class VKDeviceFactory : public IDeviceFactory
 		{
@@ -6181,6 +6567,15 @@ namespace ESSE
 			else return PrecompileShadersSource(compiler, data, length, desc, log, ectx);
 		}
 		VulkanDeviceClass GetVulkanDeviceClass(Graphica::IDevice * device) noexcept{ return static_cast<VKDevice *>(device)->GetDeviceClassVK(); }
+		oref<Graphica::IDeviceContext2D> PrecreateContext2D(Graphica::IDeviceContext * context) noexcept
+		{
+			if (context->IsDeferred()) static_cast<VKDeviceDeferredContext *>(context)->PrecreateContext2D();
+			else static_cast<VKDeviceImmediateContext *>(context)->PrecreateContext2D();
+			ErrorContext ectx; ErrorClear(ectx);
+			auto result = owrap(reinterpret_cast<Graphica::IDeviceContext2D *>(context->DynamicCast(Classes.IDeviceContext2D, ectx)));
+			if (ErrorTest(ectx)) return 0;
+			return result;
+		}
 		oref<Graphica::IDeviceFactory> CreateDeviceFactory(ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO

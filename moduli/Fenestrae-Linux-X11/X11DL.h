@@ -25,6 +25,18 @@ namespace ESSE
 		constexpr int XkbAllComponentsMask = 0x7f;
 		constexpr int XkbUseCoreKbd = 0x0100;
 
+		constexpr int ForgetGravity = 0;
+		constexpr int NorthWestGravity = 1;
+		constexpr int NorthGravity = 2;
+		constexpr int NorthEastGravity = 3;
+		constexpr int WestGravity = 4;
+		constexpr int CenterGravity = 5;
+		constexpr int EastGravity = 6;
+		constexpr int SouthWestGravity = 7;
+		constexpr int SouthGravity = 8;
+		constexpr int SouthEastGravity = 9;
+		constexpr int StaticGravity = 10;
+
 		constexpr int NoEventMask = 0L;
 		constexpr int KeyPressMask = (1L<<0);
 		constexpr int KeyReleaseMask = (1L<<1);

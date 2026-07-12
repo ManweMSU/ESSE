@@ -17,18 +17,20 @@ class HDLR : public Object, public ESSE::Windows::IApplicationCallback, public E
 {
 	oref<Graphica::IDeviceContextFactory2D> factory;
 	oref<Graphica::IBitmap> bitmap;
-	ObjectDictionary<Windows::IWindow *, Graphica::IDeviceContext2D> context;
-	ObjectDictionary<Windows::IWindow *, Graphica::IBitmapBrush> brush;
+	oref<Graphica::IDeviceContext2D> context;
+	oref<Graphica::IBitmapBrush> brush;
 public:
 	void wnew(Windows::IWindow * parent, uint style)
 	{
+		auto subhdlr = new HDLR;
 		auto ws = Windows::GetWindowSystem();
+		subhdlr->con = con;
 		Windows::CreateWindowDesc wdesc;
 		wdesc.desc_type = Windows::CreateWindowDescType::CreateWindowDesc;
 		wdesc.next_desc = 0;
 		wdesc.style = Windows::WindowStyleHasTitle | Windows::WindowStyleResizeble | Windows::WindowStyleCloseButton | Windows::WindowStyleHelpButton | Windows::WindowStyleSetBlurBehind | style;
 		wdesc.title = U"Валера Пиздюк";
-		wdesc.callback = this;
+		wdesc.callback = subhdlr;
 		wdesc.parent_window = parent;
 		wdesc.position = Rectangle(100, 100, 1000, 1000);
 		wdesc.minimal_constraints = wdesc.maximal_constraints = Index2(0, 0);
@@ -61,25 +63,30 @@ public:
 			auto image = DecodePicture(FileStream::Create(path, FileAccess::AccessRead, FileCreationMode::OpenExisting));
 			bitmap = factory->LoadBitmap(image);
 		}
-		auto ctx = factory->CreatePresentationContext(window, 0);
-		auto brs = ctx->CreateBitmapBrush(bitmap, Rectangle(0, 0, bitmap->GetWidth(), bitmap->GetHeight()));
-		context.Append(window, ctx);
-		brush.Append(window, brs);
+		auto f2 = Graphica::CreateDeviceFactory();
+		auto dev = f2->CreateDefaultDevice();
+		context = factory->CreatePresentationContext(window, dev);
+		if (!context) {
+			con->WriteLine(U"FAILED TO CREATE A HARDWARE CONTEXT, FALLING BACK TO SOFTWARE");
+			context = factory->CreatePresentationContext(window, 0);
+			if (!context) {
+				con->WriteLine(U"THE SOFTWARE CONTEXT CREATION FAILED TOO");
+				ExitProcess(0);
+			}
+		}
+		brush = context->CreateBitmapBrush(bitmap, Rectangle(0, 0, bitmap->GetWidth(), bitmap->GetHeight()));
 	}
 	virtual void Destroyed(Windows::IWindow * window) noexcept
 	{
 		con->WriteLine(U"WINDOW DESTROYED");
-		context.Remove(window);
-		brush.Remove(window);
+		Release();
 	}
 	virtual void Shown(Windows::IWindow * window, bool show) noexcept { con->WriteLine(U"WINDOW SHOWN: " + string(show)); }
 	virtual void RenderWindow(Windows::IWindow * window) noexcept
 	{
 		con->WriteLine(U"WINDOW RENDER");
-		auto ctx = context[window];
-		auto brs = brush[window];
 		auto size = window->GetClientSize();
-		ctx->BeginRendering(Graphica::TextureLoadAction::Clear, Color(128, 0, 255, 128));
+		context->BeginRendering(Graphica::TextureLoadAction::Clear, Color(128, 0, 255, 128));
 		double ai = double(bitmap->GetWidth()) / double(bitmap->GetHeight());
 		double as = double(size.x) / double(size.y);
 		int cx = size.x / 2;
@@ -87,13 +94,13 @@ public:
 		if (ai > as) {
 			int w = size.x;
 			int h = w / ai;
-			ctx->Render(brs, Rectangle(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2));
+			context->Render(brush, Rectangle(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2));
 		} else {
 			int h = size.y;
 			int w = h * ai;
-			ctx->Render(brs, Rectangle(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2));
+			context->Render(brush, Rectangle(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2));
 		}
-		ctx->EndRendering();
+		context->EndRendering();
 	}
 	virtual void WindowClosed(Windows::IWindow * window) noexcept
 	{
