@@ -1,6 +1,6 @@
 mkdir resurrect/_obj
 mkdir resurrect/_bin
-cc resurrect/resurrector.c -o resurrect/_bin/resurrector || { echo "Compilatio resurrectoris falsa."; exit 1; }
+cc resurrect/resurrector.c -o resurrect/_bin/resurrector &>> resurrect/_obj/resurrector.log || { echo "Compilatio resurrectoris falsa."; exit 1; }
 resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     constructor/ \
     moduli/Auxilia/ \
@@ -25,7 +25,8 @@ resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     moduli/Graphica-Linux/ \
     moduli/Imagines/ \
     moduli/EngineRuntime/ \
-    I:moduli I:moduli/Graphica-Linux/api I:moduli/EngineRuntime J:resurrect/_obj O:resurrect/_bin/esse || { echo "Resurrectio ESSE falsa."; exit 2; }
+    I:moduli I:moduli/Graphica-Linux/api I:moduli/EngineRuntime J:resurrect/_obj O:resurrect/_bin/esse \
+    &>> resurrect/_obj/resurrector.log || { echo "Resurrectio ESSE falsa."; exit 2; }
 cp constructor/esse.loc.ini resurrect/_bin/esse.loc.ini
 mkdir bin
 resurrect/_bin/esse -R bin/esse.ini --reconfigura -N || { echo "Reconfiguratio falsa."; exit 3; }

@@ -1172,6 +1172,12 @@ namespace ESSE
 				_extensions.Remove(extcls);
 				return true;
 			}
+			virtual Object * GetExtension(Windows::IWindowExtensionClass * extcls) noexcept override
+			{
+				if (!_window) return 0;
+				auto object = _extensions[extcls];
+				return object ? object->Inner() : 0;
+			}
 			virtual double GetScaleFactor(void) noexcept override { if (!_window) return 0.0; return _system_x11->GetSystemScaleFactor(); }
 			virtual oref<Windows::IScreen> GetScreen(void) noexcept override { if (!_window) return 0; return _system_x11->GetScreenWithBestCoverage(GetPosition()); }
 			virtual oref<Windows::ITheme> GetTheme(void) noexcept override { if (!_window) return 0; return _system->GetSystemTheme(); }

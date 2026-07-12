@@ -239,7 +239,7 @@ namespace ESSE
 		_pointer += read_fx;
 		return read_fx;
 	}
-	uintptr Substream::WriteE(const void * data, uintptr size, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); }
+	uintptr Substream::WriteE(const void * data, uintptr size, ErrorContext & ectx) noexcept { ErrorSet(ectx, Errores::ErrorNotImplemented); return 0; }
 	uint64 Substream::SeekE(int64 position, SeekOrigin org, ErrorContext & ectx) noexcept
 	{
 		ESSE_TRY_INTRO

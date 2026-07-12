@@ -317,6 +317,7 @@ namespace ESSE
 			virtual void SetTimer(uint32 id, uint32 period) noexcept = 0;
 			virtual bool AddExtension(Object * ext, IWindowExtensionClass * extcls) noexcept = 0;
 			virtual bool RemoveExtension(IWindowExtensionClass * extcls) noexcept = 0;
+			virtual Object * GetExtension(IWindowExtensionClass * extcls) noexcept = 0;
 			// Getting visual appearance
 			virtual double GetScaleFactor(void) noexcept = 0;
 			virtual oref<IScreen> GetScreen(void) noexcept = 0;
