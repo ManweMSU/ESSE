@@ -114,7 +114,7 @@ public:
 	virtual void WindowActivated(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW ACTIVATE"); }
 	virtual void WindowDeactivated(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW DEACTIVATE"); }
 	virtual void WindowMoved(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW MOVED"); }
-	virtual void WindowResized(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW RESIZED"); window->Invalidate(); }
+	virtual void WindowResized(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW RESIZED: " + string(window->GetClientSize())); window->Invalidate(); }
 	virtual void FocusChanged(Windows::IWindow * window, bool got) noexcept { con->WriteLine(U"WINDOW FOCUS: " + string(got)); }
 	virtual bool KeyIsDown(Windows::IWindow * window, uint vkc, uint vkm) noexcept
 	{
@@ -160,7 +160,7 @@ int Main(void)
 		hdlr->con = con;
 		auto ws = Windows::CreateWindowSystem();
 		ws->SetCallback(hdlr);
-		auto s4 = ws->GetKeyboardManager()->RegisterHotKey(666, VirtualKeyCodes::Q, VirtualKeyModifiers::Control);
+		auto s4 = ws->GetKeyboardManager()->RegisterHotKey(666, VirtualKeyCodes::E, VirtualKeyModifiers::Control);
 		console.WriteLine(s4);
 
 		auto capt = ws->GetDefaultScreen()->Capture();
@@ -171,6 +171,7 @@ int Main(void)
 		cdesc.text = U"VALERA";
 		cdesc.files = owrap(new array<string>(1));
 		cdesc.files->Append(IO::GetExecutablePath());
+		ws->GetClipboardManager()->WriteClipboard(cdesc);
 
 		const void * picon;
 		uintptr licon;

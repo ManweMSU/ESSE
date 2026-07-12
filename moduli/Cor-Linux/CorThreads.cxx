@@ -2,6 +2,7 @@
 
 #include <semaphore.h>
 #include <pthread.h>
+#include <limits.h>
 #include <errno.h>
 #include <new>
 

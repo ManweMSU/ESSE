@@ -795,6 +795,22 @@ namespace ESSE
 			unsigned char vmods[XkbNumVirtualMods];
 			unsigned short * vmodmap;
 		} XkbServerMapRec, * XkbServerMapPtr;
+		typedef	struct _XkbSymMapRec {
+			unsigned char kt_index[XkbNumKbdGroups];
+			unsigned char group_info;
+			unsigned char width;
+			unsigned short offset;
+		} XkbSymMapRec, * XkbSymMapPtr;
+		typedef struct _XkbClientMapRec {
+			unsigned char size_types;
+			unsigned char num_types;
+			void * types;
+			unsigned short size_syms;
+			unsigned short num_syms;
+			KeySym * syms;
+			XkbSymMapPtr key_sym_map;
+			unsigned char * modmap;
+		} XkbClientMapRec, * XkbClientMapPtr;
 		typedef struct _XkbNamesRec {
 			Atom keycodes;
 			Atom geometry;
@@ -820,7 +836,7 @@ namespace ESSE
 			KeyCode max_key_code;
 			void * ctrls;
 			XkbServerMapPtr server;
-			void * map;
+			XkbClientMapPtr map;
 			void * indicators;
 			XkbNamesPtr names;
 			void * compat;
@@ -972,6 +988,7 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(XDefaultVisual, Visual *, (Display *, int))
 			DEFINE_FUNCTION_POINTER(XQueryTree, Status, (Display *, Window, Window *, Window *, Window **, unsigned int *))
 			DEFINE_FUNCTION_POINTER(XGetVisualInfo, XVisualInfo *, (Display *, long, XVisualInfo *, int *))
+			DEFINE_FUNCTION_POINTER(XSelectInput, int, (Display *, Window, long))
 			DEFINE_FUNCTION_POINTER(XkbLibraryVersion, Bool, (int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbQueryExtension, Bool, (Display *, int *, int *, int *, int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbGetMap, XkbDescPtr, (Display *, unsigned int, unsigned int))

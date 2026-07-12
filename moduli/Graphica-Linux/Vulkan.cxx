@@ -3857,6 +3857,7 @@ namespace ESSE
 		{
 		public:
 			virtual VkSurfaceKHR GetSurface(void) noexcept = 0;
+			virtual Windows::IWindow * GetWindow(void) noexcept = 0;
 			virtual bool EnableEDR(void) noexcept = 0;
 			virtual bool GetFullscreenState(void) noexcept = 0;
 			virtual void SetFullscreenState(bool set) noexcept = 0;
@@ -4053,6 +4054,8 @@ namespace ESSE
 				}
 				_queue->CommitSwapChain(this, _swapchain);
 				_parent->GetPrimaryDeviceContext()->Flush();
+				auto window = _surface->GetWindow();
+				auto size = window ? window->GetClientSize() : Index2(0, 0);
 				auto pass = _queue->CreatePass();
 				if (!pass) return false;
 				auto api = _queue->GetAPI();
@@ -4092,8 +4095,8 @@ namespace ESSE
 				blt.srcOffsets[1].x = _intermediate->_desc.Width;
 				blt.srcOffsets[1].y = _intermediate->_desc.Height;
 				blt.srcOffsets[1].z = 1;
-				blt.dstOffsets[1].x = _swapchain->GetWidth();
-				blt.dstOffsets[1].y = _swapchain->GetHeight();
+				blt.dstOffsets[1].x = window ? min<uint>(_swapchain->GetWidth(), size.x) : _swapchain->GetWidth();
+				blt.dstOffsets[1].y = window ? min<uint>(_swapchain->GetHeight(), size.y) : _swapchain->GetHeight();
 				blt.dstOffsets[1].z = 1;
 				api->Dispatch.vkCmdBlitImage(pass->buffer, _intermediate->_image, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blt, VK_FILTER_LINEAR);
 				barrier[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -4178,6 +4181,7 @@ namespace ESSE
 			VKX11Surface(VKDeviceAPI * api) : _api(api), _surface(0), _window(0), _window_x11(0) {}
 			virtual ~VKX11Surface(void) override { if (_surface) _api->Base->Dispatch.vkDestroySurfaceKHR(_api->Base->Instance, _surface, &_api->Base->Allocator); }
 			virtual VkSurfaceKHR GetSurface(void) noexcept override { return _surface; }
+			virtual Windows::IWindow * GetWindow(void) noexcept override { return _window; }
 			virtual bool EnableEDR(void) noexcept override { return false; }
 			virtual bool GetFullscreenState(void) noexcept override { return _window_x11 ? _window_x11->GetFullscreenState() : false; }
 			virtual void SetFullscreenState(bool set) noexcept override { if (_window_x11) _window_x11->SetFullscreenState(set); }

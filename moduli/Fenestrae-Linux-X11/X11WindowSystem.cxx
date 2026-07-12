@@ -49,6 +49,16 @@ namespace ESSE
 			}
 			return false;
 		}
+		template<class F> void VariateMask(uint init, uint mask, F f)
+		{
+			if (mask) {
+				for (uint i = 0; i < 32; i++) if (mask & (1U << i)) {
+					auto bit = 1U << i;
+					VariateMask(init, mask ^ bit, f);
+					VariateMask(init | bit, mask ^ bit, f);
+				}
+			} else f(init);
+		}
 		oref<XServerConnection> ProvideServerConnection() noexcept
 		{
 			ErrorContext ectx; ErrorClear(ectx);
@@ -1651,6 +1661,7 @@ namespace ESSE
 				int ver_minor, ver_major;
 				int opcode, event_base, error_base;
 				int numlock_mod, scrolllock_mod, alt_mod, system_mod;
+				int active_mod_mask, passive_mod_mask;
 			};
 		private:
 			oref<XLibAPI> _xlib_api;
@@ -2106,21 +2117,37 @@ namespace ESSE
 				if (ErrorTest(ectx)) _dbus.Clear();
 				_xkb.ver_major = XkbMajorVersion; _xkb.ver_minor = XkbMinorVersion;
 				_xkb.numlock_mod = _xkb.scrolllock_mod = _xkb.alt_mod = _xkb.system_mod = 0;
+				_xkb.active_mod_mask = ShiftMask | ControlMask; _xkb.passive_mod_mask = LockMask;
 				if (_xlib_api->XkbLibraryVersion(&_xkb.ver_major, &_xkb.ver_minor)) {
 					if (_xlib_api->XkbQueryExtension(_con->GetXDisplay(), &_xkb.opcode, &_xkb.event_base, &_xkb.error_base, &_xkb.ver_major, &_xkb.ver_minor)) {
 						auto keyboard_desc = _xlib_api->XkbGetMap(_con->GetXDisplay(), XkbAllComponentsMask, XkbUseCoreKbd);
 						if (keyboard_desc) {
-							if (keyboard_desc->names) for (int i = 0; i < 16; i++) {
-								if (!keyboard_desc->names->vmods[i]) continue;
-								auto mod = keyboard_desc->server->vmods[i];
-								auto name = _xlib_api->XGetAtomName(_con->GetXDisplay(), keyboard_desc->names->vmods[i]);
-								if (name) {
-									if (strcmp(name, "NumLock") == 0) _xkb.numlock_mod = mod;
-									else if (strcmp(name, "ScrollLock") == 0) _xkb.scrolllock_mod = mod;
-									else if (strcmp(name, "Alt") == 0) _xkb.alt_mod = mod;
-									else if (strcmp(name, "Meta") == 0) _xkb.system_mod = mod;
-									_xlib_api->XFree(name);
+							if (keyboard_desc->map) {
+								_xkb.active_mod_mask = _xkb.passive_mod_mask = 0;
+								for (int i = keyboard_desc->min_key_code; i <= keyboard_desc->max_key_code; i++) if (keyboard_desc->map->modmap[i]) {
+									auto mm = keyboard_desc->map->modmap[i];
+									auto vkc = XKeyCodeToESSE(i);
+									if (vkc == VirtualKeyCodes::LeftShift || vkc == VirtualKeyCodes::RightShift || vkc == VirtualKeyCodes::Shift) {
+										_xkb.active_mod_mask |= mm;
+									} else if (vkc == VirtualKeyCodes::LeftControl || vkc == VirtualKeyCodes::RightControl || vkc == VirtualKeyCodes::Control) {
+										_xkb.active_mod_mask |= mm;
+									} else if (vkc == VirtualKeyCodes::LeftAlternative || vkc == VirtualKeyCodes::RightAlternative || vkc == VirtualKeyCodes::Alternative) {
+										_xkb.active_mod_mask |= mm;
+										_xkb.alt_mod |= mm;
+									} else if (vkc == VirtualKeyCodes::LeftSystem || vkc == VirtualKeyCodes::RightSystem || vkc == VirtualKeyCodes::System) {
+										_xkb.active_mod_mask |= mm;
+										_xkb.system_mod |= mm;
+									} else if (vkc == VirtualKeyCodes::CapsLock) {
+										_xkb.passive_mod_mask |= mm;
+									} else if (vkc == VirtualKeyCodes::NumLock) {
+										_xkb.passive_mod_mask |= mm;
+										_xkb.numlock_mod |= mm;
+									} else if (vkc == VirtualKeyCodes::ScrollLock) {
+										_xkb.passive_mod_mask |= mm;
+										_xkb.scrolllock_mod |= mm;
+									}
 								}
+								_xkb.passive_mod_mask = 0xFF ^ _xkb.active_mod_mask;
 							}
 							_xlib_api->XkbFreeKeyboard(keyboard_desc, 0, true);
 						}
@@ -2190,7 +2217,7 @@ namespace ESSE
 				} else if (event->type == SelectionRequest) {
 					_clipboard_respond(&event->xselectionrequest);
 				} else if (event->type == KeyPress) {
-					if (_callback) for (auto & hk : _hotkeys) if (hk.vkc == event->xkey.keycode && hk.vkm == event->xkey.state) {
+					if (_callback) for (auto & hk : _hotkeys) if (hk.vkc == event->xkey.keycode && hk.vkm == (event->xkey.state & _xkb.active_mod_mask)) {
 						_callback->HandleHotKeyEvent(hk.id);
 					}
 				}
@@ -2350,18 +2377,24 @@ namespace ESSE
 					rec.id = event_id;
 					if (vkm & VirtualKeyModifiers::Shift) rec.vkm |= ShiftMask;
 					if (vkm & VirtualKeyModifiers::Control) rec.vkm |= ControlMask;
-					if (vkm & VirtualKeyModifiers::Alternative) rec.vkm |= _xkb.alt_mod;
-					if (vkm & VirtualKeyModifiers::System) rec.vkm |= _xkb.system_mod;
+					if (vkm & VirtualKeyModifiers::Alternative) {
+						if (!_xkb.alt_mod) return false;
+						rec.vkm |= _xkb.alt_mod;
+					}
+					if (vkm & VirtualKeyModifiers::System) {
+						if (!_xkb.system_mod) return false;
+						rec.vkm |= _xkb.system_mod;
+					}
 					_hotkeys << rec;
 				} catch (...) { return false; }
 				if (_hotkeys.GetLength() == 1) {
-					XSetWindowAttributes attr;
-					attr.event_mask = KeyPress;
-					_xlib_api->XChangeWindowAttributes(_con->GetXDisplay(), root, CWEventMask, &attr);
+					_xlib_api->XSelectInput(_con->GetXDisplay(), root, KeyPressMask);
 					_dispatch->RegisterWindowHandler(root, this);
 				}
 				LastXError = 0;
-				_xlib_api->XGrabKey(_con->GetXDisplay(), _hotkeys.LastElement().vkc, _hotkeys.LastElement().vkm, root, true, GrabModeAsync, GrabModeAsync);
+				VariateMask(_hotkeys.LastElement().vkm, _xkb.passive_mod_mask, [&](uint mask) {
+					_xlib_api->XGrabKey(_con->GetXDisplay(), _hotkeys.LastElement().vkc, mask, root, true, GrabModeAsync, GrabModeAsync);
+				});
 				_xlib_api->XSync(_con->GetXDisplay(), false);
 				if (LastXError) { UnregisterHotKey(event_id); return false; }
 				return true;
@@ -2371,16 +2404,16 @@ namespace ESSE
 				if (!_hotkeys.GetLength()) return;
 				auto root = _xlib_api->XRootWindow(_con->GetXDisplay(), _xlib_api->XDefaultScreen(_con->GetXDisplay()));
 				for (uintptr i = 0; i < _hotkeys.GetLength(); i++) if (_hotkeys[i].id == event_id) {
-					_xlib_api->XUngrabKey(_con->GetXDisplay(), _hotkeys[i].vkc, _hotkeys[i].vkm, root);
+					VariateMask(_hotkeys[i].vkm, _xkb.passive_mod_mask, [&](uint mask) {
+						_xlib_api->XUngrabKey(_con->GetXDisplay(), _hotkeys[i].vkc, mask, root);
+					});
 					_xlib_api->XSync(_con->GetXDisplay(), false);
 					_hotkeys.Remove(i);
 					break;
 				}
 				if (!_hotkeys.GetLength()) {
 					_dispatch->UnregisterWindowHandler(root);
-					XSetWindowAttributes attr;
-					attr.event_mask = 0;
-					_xlib_api->XChangeWindowAttributes(_con->GetXDisplay(), root, CWEventMask, &attr);
+					_xlib_api->XSelectInput(_con->GetXDisplay(), root, 0);
 				}
 			}
 			virtual uint GetKeyboardDelay(void) noexcept override
