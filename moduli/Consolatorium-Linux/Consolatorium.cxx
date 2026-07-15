@@ -243,10 +243,10 @@ namespace ESSE
 						else if (Memory::StringCompare(escaped + 1, U"1Q") == 0) event.virtual_key_code = VirtualKeyCodes::F2;
 						else if (Memory::StringCompare(escaped + 1, U"1R") == 0) event.virtual_key_code = VirtualKeyCodes::F3;
 						else if (Memory::StringCompare(escaped + 1, U"1S") == 0) event.virtual_key_code = VirtualKeyCodes::F4;
-						else if (Memory::StringCompare(escaped + 1, U"1;5A") == 0) { event.virtual_key_code = VirtualKeyCodes::Up; event.virtual_key_modifiers |= ConsoleVirtualKeyModifier::Control; }
-						else if (Memory::StringCompare(escaped + 1, U"1;5B") == 0) { event.virtual_key_code = VirtualKeyCodes::Down; event.virtual_key_modifiers |= ConsoleVirtualKeyModifier::Control; }
-						else if (Memory::StringCompare(escaped + 1, U"1;5C") == 0) { event.virtual_key_code = VirtualKeyCodes::Right; event.virtual_key_modifiers |= ConsoleVirtualKeyModifier::Control; }
-						else if (Memory::StringCompare(escaped + 1, U"1;5D") == 0) { event.virtual_key_code = VirtualKeyCodes::Left; event.virtual_key_modifiers |= ConsoleVirtualKeyModifier::Control; }
+						else if (Memory::StringCompare(escaped + 1, U"1;5A") == 0) { event.virtual_key_code = VirtualKeyCodes::Up; event.virtual_key_modifiers |= VirtualKeyModifiers::Control; }
+						else if (Memory::StringCompare(escaped + 1, U"1;5B") == 0) { event.virtual_key_code = VirtualKeyCodes::Down; event.virtual_key_modifiers |= VirtualKeyModifiers::Control; }
+						else if (Memory::StringCompare(escaped + 1, U"1;5C") == 0) { event.virtual_key_code = VirtualKeyCodes::Right; event.virtual_key_modifiers |= VirtualKeyModifiers::Control; }
+						else if (Memory::StringCompare(escaped + 1, U"1;5D") == 0) { event.virtual_key_code = VirtualKeyCodes::Left; event.virtual_key_modifiers |= VirtualKeyModifiers::Control; }
 						else return false;
 					}
 					return true;
@@ -275,7 +275,7 @@ namespace ESSE
 				} else if (chr == 0) {
 					desc.event = ConsoleInputEvent::KeyInput;
 					desc.virtual_key_code = VirtualKeyCodes::Space;
-					desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
+					desc.virtual_key_modifiers = VirtualKeyModifiers::Control;
 					return true;
 				} else if (chr == 9 || chr == 10 || chr == 13) {
 					desc.event = ConsoleInputEvent::CharacterInput;
@@ -284,7 +284,7 @@ namespace ESSE
 				} else if (chr < 27) {
 					desc.event = ConsoleInputEvent::KeyInput;
 					desc.virtual_key_code = 'A' + chr - 1;
-					desc.virtual_key_modifiers = ConsoleVirtualKeyModifier::Control;
+					desc.virtual_key_modifiers = VirtualKeyModifiers::Control;
 					return true;
 				} else if (chr == 27) {
 					pollfd pfd;

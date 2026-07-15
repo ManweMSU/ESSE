@@ -74,7 +74,6 @@ public:
 				ExitProcess(0);
 			}
 		}
-		brush = context->CreateBitmapBrush(bitmap, Rectangle(0, 0, bitmap->GetWidth(), bitmap->GetHeight()));
 	}
 	virtual void Destroyed(Windows::IWindow * window) noexcept
 	{
@@ -85,6 +84,9 @@ public:
 	virtual void RenderWindow(Windows::IWindow * window) noexcept
 	{
 		con->WriteLine(U"WINDOW RENDER");
+		if (!brush) {
+			brush = context->CreateBitmapBrush(bitmap, Rectangle(0, 0, bitmap->GetWidth(), bitmap->GetHeight()));
+		}
 		auto size = window->GetClientSize();
 		context->BeginRendering(Graphica::TextureLoadAction::Clear, Color(128, 0, 255, 128));
 		double ai = double(bitmap->GetWidth()) / double(bitmap->GetHeight());
@@ -127,6 +129,43 @@ public:
 		if (vkc == VirtualKeyCodes::W) wnew(0, Windows::WindowStyleModal);
 		if (vkc == VirtualKeyCodes::A) wnew(window, 0);
 		if (vkc == VirtualKeyCodes::S) wnew(window, Windows::WindowStyleModal);
+		if (vkc == VirtualKeyCodes::R) {
+			Windows::ClipboardDataDesc cdesc;
+			Windows::GetWindowSystem()->GetClipboardManager()->ReadClipboard(0xFFFF, cdesc);
+			if (cdesc.format_mask & Windows::ClipboardDataFormatText) {
+				con->WriteLine(U"Text on the clipboard: " + cdesc.text);
+			} else if (cdesc.format_mask & Windows::ClipboardDataFormatFiles) {
+				con->WriteLine(U"Files on the clipboard:");
+				for (auto & f : *cdesc.files) con->WriteLine(f);
+			} else if (cdesc.format_mask & Windows::ClipboardDataFormatImage) {
+				con->WriteLine(U"Image on the clipboard (see to the window)");
+				bitmap = factory->LoadBitmap(cdesc.image);
+				brush.Clear();
+				window->Invalidate();
+			} else if (cdesc.format_mask & Windows::ClipboardDataFormatData) {
+				con->WriteLine(U"Data on the clipboard:");
+				con->WriteLine(cdesc.data_format);
+				con->WriteLine(HexStringFromData(cdesc.data, 0, true));
+			}
+		} else if (vkc == VirtualKeyCodes::T) {
+			Windows::ClipboardDataDesc cdesc;
+			cdesc.format_mask = Windows::ClipboardDataFormatText;
+			cdesc.text = U"Валера пиздюк";
+			Windows::GetWindowSystem()->GetClipboardManager()->WriteClipboard(cdesc);
+		} else if (vkc == VirtualKeyCodes::Y) {
+			Windows::ClipboardDataDesc cdesc;
+			cdesc.format_mask = Windows::ClipboardDataFormatImage;
+			cdesc.image = bitmap->QueryContents();
+			Windows::GetWindowSystem()->GetClipboardManager()->WriteClipboard(cdesc);
+		} else if (vkc == VirtualKeyCodes::U) {
+			Windows::ClipboardDataDesc cdesc;
+			cdesc.format_mask = Windows::ClipboardDataFormatFiles;
+			cdesc.files = owrap(new array<string>(1));
+			cdesc.files->Append(IO::GetExecutablePath());
+			Windows::GetWindowSystem()->GetClipboardManager()->WriteClipboard(cdesc);
+		} else if (vkc == VirtualKeyCodes::M) {
+			Windows::GetWindowSystem()->SetCursorPosition(window->ConvertClientToGlobal(window->GetClientSize() / Index2(2, 2)));
+		}
 		return false;
 	}
 	virtual void KeyIsUp(Windows::IWindow * window, uint vkc, uint vkm) noexcept { con->WriteLine(U"WINDOW KEY UP: " + string(vkc) + U", " + string(vkm)); }
@@ -165,13 +204,6 @@ int Main(void)
 
 		auto capt = ws->GetDefaultScreen()->Capture();
 		if (capt) Encode(FileStream::Create(U"capture.png", FileAccess::AccessReadWrite, FileCreationMode::CreateAlways), capt, ImageFormatPNG);
-
-		Windows::ClipboardDataDesc cdesc;
-		cdesc.format_mask = Windows::ClipboardDataFormatText | Windows::ClipboardDataFormatFiles;
-		cdesc.text = U"VALERA";
-		cdesc.files = owrap(new array<string>(1));
-		cdesc.files->Append(IO::GetExecutablePath());
-		ws->GetClipboardManager()->WriteClipboard(cdesc);
 
 		const void * picon;
 		uintptr licon;

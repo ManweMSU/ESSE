@@ -194,8 +194,12 @@ namespace ESSE
 			DEFINE_ATOM_FIELD(targets)
 			DEFINE_ATOM_FIELD(text)
 			DEFINE_ATOM_FIELD(text_utf8)
-			DEFINE_ATOM_FIELD(pixmap)
-			DEFINE_ATOM_FIELD(file_uri)
+			DEFINE_ATOM_FIELD(text_uri_list)
+			DEFINE_ATOM_FIELD(image_png)
+			DEFINE_ATOM_FIELD(image_jpeg)
+			DEFINE_ATOM_FIELD(image_tiff)
+			DEFINE_ATOM_FIELD(image_webp)
+			DEFINE_ATOM_FIELD(image_bmp)
 			DEFINE_ATOM_FIELD(data)
 			DEFINE_ATOM_FIELD(data_format)
 			DEFINE_ATOM_FIELD(net_wm_state)
@@ -1726,8 +1730,12 @@ namespace ESSE
 				DEFINE_ATOM_LOAD(targets, "TARGETS")
 				DEFINE_ATOM_LOAD(text, "STRING")
 				DEFINE_ATOM_LOAD(text_utf8, "UTF8_STRING")
-				DEFINE_ATOM_LOAD(pixmap, "image/png")
-				DEFINE_ATOM_LOAD(file_uri, "text/uri-list")
+				DEFINE_ATOM_LOAD(text_uri_list, "text/uri-list")
+				DEFINE_ATOM_LOAD(image_png, "image/png")
+				DEFINE_ATOM_LOAD(image_jpeg, "image/jpeg")
+				DEFINE_ATOM_LOAD(image_tiff, "image/tiff")
+				DEFINE_ATOM_LOAD(image_webp, "image/webp")
+				DEFINE_ATOM_LOAD(image_bmp, "image/bmp")
 				DEFINE_ATOM_LOAD(data, "ESSE.Data")
 				DEFINE_ATOM_LOAD(data_format, "ESSE.EfformatioDatorum")
 				DEFINE_ATOM_LOAD(net_wm_state, "_NET_WM_STATE")
@@ -1971,8 +1979,8 @@ namespace ESSE
 							array<Atom> atoms(0x10);
 							atoms << _atoms.targets;
 							if (_clipboard.format_mask & Windows::ClipboardDataFormatText) atoms << _atoms.text_utf8 << _atoms.text;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatImage) atoms << _atoms.pixmap;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatFiles) atoms << _atoms.file_uri;
+							if (_clipboard.format_mask & Windows::ClipboardDataFormatImage) atoms << _atoms.image_png;
+							if (_clipboard.format_mask & Windows::ClipboardDataFormatFiles) atoms << _atoms.text_uri_list;
 							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataTypeless) atoms << _atoms.data;
 							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataFormat) atoms << _atoms.data_format;
 							_clipboard_respond_atoms(event, atoms);
@@ -1981,13 +1989,13 @@ namespace ESSE
 								auto result = EncodeString(_clipboard.text, Unicode::Encoding::UTF8, false);
 								_clipboard_respond_data(event, *result);
 							} else _clipboard_respond_na(event);
-						} else if (event->target == _atoms.pixmap) {
+						} else if (event->target == _atoms.image_png) {
 							if (_clipboard.format_mask & Windows::ClipboardDataFormatImage) {
 								auto stream = MemoryStream::Create(0x10000);
 								Picturae::Encode(stream, _clipboard.image, Picturae::ImageFormatPNG);
 								_clipboard_respond_data(event, *stream->GetStorage());
 							} else _clipboard_respond_na(event);
-						} else if (event->target == _atoms.file_uri) {
+						} else if (event->target == _atoms.text_uri_list) {
 							if (_clipboard.format_mask & Windows::ClipboardDataFormatFiles) {
 								string uris;
 								for (auto & f : *_clipboard.files) uris += U"file://" + _uri_path_transform(f, false) + U"\r\n";
@@ -2059,7 +2067,7 @@ namespace ESSE
 							auto block = _clipboard_query_property(proptype, true);
 							if (!block) return 0;
 							if (!block->GetLength()) break;
-							try { data->Append(block); } catch (...) { return 0; }
+							try { data->Append(block->GetBuffer(), block->GetLength()); } catch (...) { return 0; }
 						}
 						return data;
 					} else { _xlib_api->XFree(pdata); return 0; }
@@ -2448,11 +2456,12 @@ namespace ESSE
 					auto atoms = reinterpret_cast<Atom *>(targets->GetBuffer());
 					uint result = 0;
 					for (intptr i = 0; i < num_atoms; i++) {
-						if (atoms[i] == _atoms.text || atoms[i] == _atoms.text_utf8) result |= Windows::ClipboardDataFormatText & format_mask;
-						if (atoms[i] == _atoms.pixmap) result |= Windows::ClipboardDataFormatImage & format_mask;
-						if (atoms[i] == _atoms.file_uri) result |= Windows::ClipboardDataFormatFiles & format_mask;
-						if (atoms[i] == _atoms.data) result |= Windows::ClipboardDataFormatDataTypeless & format_mask;
-						if (atoms[i] == _atoms.data_format) result |= Windows::ClipboardDataFormatDataFormat & format_mask;
+						auto atom = atoms[i];
+						if (atom == _atoms.text || atom == _atoms.text_utf8) result |= Windows::ClipboardDataFormatText & format_mask;
+						if (atom == _atoms.image_png || atom == _atoms.image_jpeg || atom == _atoms.image_tiff || atom == _atoms.image_webp || atom == _atoms.image_bmp) result |= Windows::ClipboardDataFormatImage & format_mask;
+						if (atom == _atoms.text_uri_list) result |= Windows::ClipboardDataFormatFiles & format_mask;
+						if (atom == _atoms.data) result |= Windows::ClipboardDataFormatDataTypeless & format_mask;
+						if (atom == _atoms.data_format) result |= Windows::ClipboardDataFormatDataFormat & format_mask;
 					}
 					return result;
 				}
@@ -2496,14 +2505,18 @@ namespace ESSE
 							}
 						}
 						if (format_mask & Windows::ClipboardDataFormatImage) {
-							auto data = _clipboard_query_property(_atoms.pixmap);
+							auto data = _clipboard_query_property(_atoms.image_png);
+							if (!data) data = _clipboard_query_property(_atoms.image_jpeg);
+							if (!data) data = _clipboard_query_property(_atoms.image_tiff);
+							if (!data) data = _clipboard_query_property(_atoms.image_webp);
+							if (!data) data = _clipboard_query_property(_atoms.image_bmp);
 							if (data) {
 								dest.image = Picturae::DecodePicture(StaticMemoryStream::Create(data->GetBuffer(), data->GetLength()));
 								dest.format_mask |= Windows::ClipboardDataFormatImage;
 							}
 						}
 						if (format_mask & Windows::ClipboardDataFormatFiles) {
-							auto data = _clipboard_query_property(_atoms.file_uri);
+							auto data = _clipboard_query_property(_atoms.text_uri_list);
 							if (data) {
 								auto uri = SplitString(string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8).Replace(U'\r', string()), U'\n');
 								dest.files = owrap(new array<string>(uri.GetLength()));
@@ -2532,7 +2545,6 @@ namespace ESSE
 			virtual bool WriteClipboard(const Windows::ClipboardDataDesc & dest) noexcept override
 			{
 				if (!dest.format_mask) return false;
-				auto previously_set = _clipboard.format_mask != 0;
 				uint mask_written = 0;
 				try {
 					if (dest.format_mask & Windows::ClipboardDataFormatText) {
@@ -2556,7 +2568,8 @@ namespace ESSE
 						_clipboard.data.Clear();
 					}
 				} catch (...) { return false; }
-				if (!previously_set && mask_written) _xlib_api->XSetSelectionOwner(_con->GetXDisplay(), _atoms.clipboard, _service_window, CurrentTime);
+				if (mask_written) _xlib_api->XSetSelectionOwner(_con->GetXDisplay(), _atoms.clipboard, _service_window, CurrentTime);
+				_clipboard.format_mask = mask_written;
 				return mask_written != 0;
 			}
 			virtual Index2 GetCursorPosition(void) noexcept override

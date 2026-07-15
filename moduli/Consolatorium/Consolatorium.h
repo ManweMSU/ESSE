@@ -15,11 +15,6 @@ namespace ESSE
 		enum class ConsoleInputMode : uint { Raw = 0, Echo = 1, RawNoInterrupt = 2 };
 		enum class ConsoleInputEvent : uint { EndOfStream = 0, CharacterInput = 1, KeyInput = 2, ConsoleResized = 3, SendEvent = 0x10 };
 		enum class ConsoleSessionEvent : uint { ControlC = 0, Quit = 1, ConsoleClosed = 2, Terminate = 3 };
-		namespace ConsoleVirtualKeyModifier { enum ConsoleVirtualKeyModifiers : uint {
-			Shift		= 0x01,
-			Control		= 0x02,
-			Alternate	= 0x04
-		}; }
 		namespace ConsoleSessionEventMask { enum ConsoleSessionEventMasks : uint {
 			ControlC		= 0x01,
 			Quit			= 0x02,
