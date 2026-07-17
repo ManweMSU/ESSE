@@ -26,4 +26,5 @@ CoCompila {
 	N = "Tasks/CorTasks.cxx"
 	O = "Images/CorImages.cxx"
 	P = "Images/CorGraphics.cxx"
+	Q = "Images/CorGraphicsExtensions.cxx"
 }

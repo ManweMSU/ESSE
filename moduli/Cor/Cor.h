@@ -30,3 +30,4 @@
 
 #include "Images/CorImages.h"
 #include "Images/CorGraphics.h"
+#include "Images/CorGraphicsExtensions.h"
