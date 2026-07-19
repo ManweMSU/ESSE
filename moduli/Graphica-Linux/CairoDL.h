@@ -194,6 +194,17 @@ namespace ESSE
 			FT_Pos  x;
 			FT_Pos  y;
 		} FT_Vector;
+		typedef struct  FT_Bitmap_
+		{
+			unsigned int    rows;
+			unsigned int    width;
+			int             pitch;
+			unsigned char*  buffer;
+			unsigned short  num_grays;
+			unsigned char   pixel_mode;
+			unsigned char   palette_mode;
+			void*           palette;
+		} FT_Bitmap;
 		typedef struct  FT_GlyphSlotRec_
 		{
 			FT_Library        library;
@@ -206,6 +217,10 @@ namespace ESSE
 			FT_Fixed          linearHoriAdvance;
 			FT_Fixed          linearVertAdvance;
 			FT_Vector         advance;
+			int               format;
+			FT_Bitmap         bitmap;
+			FT_Int            bitmap_left;
+			FT_Int            bitmap_top;
 		} FT_GlyphSlotRec;
 		typedef struct  FT_Bitmap_Size_
 		{

@@ -111,7 +111,7 @@ namespace ESSE
 				metrics.LineSpacing = (_font_face->height - _font_face->ascender + _font_face->descender) * scale;
 				metrics.UnderlinePosition = _font_face->underline_position * scale;
 				metrics.UnderlineWidth = metrics.StrikeoutWidth = _font_face->underline_thickness * scale;
-				metrics.StrikeoutPosition = ((_font_face->ascender - _font_face->descender) / 2.0) * scale;
+				metrics.StrikeoutPosition = ((_font_face->ascender + _font_face->descender) / 2.0) * scale;
 			} else {
 				auto & m = _font_face->size->metrics;
 				auto scale = double(_height) * _scale_factor / m.height;
@@ -120,7 +120,7 @@ namespace ESSE
 				metrics.LineSpacing = (m.height - m.ascender + m.descender) * scale;
 				metrics.UnderlinePosition = metrics.Descent / 2.0;
 				metrics.UnderlineWidth = metrics.StrikeoutWidth = max(double(_height) / 20.0, 1.0);
-				metrics.StrikeoutPosition = (metrics.Ascent - metrics.Descent) / 2.0;
+				metrics.StrikeoutPosition = (metrics.Ascent + metrics.Descent) / 2.0;
 			}
 		}
 		void CairoFont::GetGlyphMetrics(const uint * glyph, Graphica::FontGlyphMetrics * metrics, uintptr length) noexcept
@@ -135,6 +135,8 @@ namespace ESSE
 					metrics[i].HorizontalAdvance = gm.horiAdvance * scale;
 					metrics[i].HorizontalLeftBearing = gm.horiBearingX * scale;
 					metrics[i].HorizontalRightBearing = (gm.horiAdvance - gm.horiBearingX - gm.width) * scale;
+					metrics[i].HorizontalTopBearing = gm.horiBearingY * scale;
+					metrics[i].HorizontalBottomBearing = metrics[i].HorizontalTopBearing - gm.height * scale;
 				} else Memory::ZeroMemory(&metrics[i], sizeof(Graphica::FontGlyphMetrics));
 			}
 		}

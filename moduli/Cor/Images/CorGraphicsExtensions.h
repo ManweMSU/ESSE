@@ -11,15 +11,12 @@ namespace ESSE
 			constexpr uint HorizontalAlignmentLeft		= 0x000;
 			constexpr uint HorizontalAlignmentCenter	= 0x001;
 			constexpr uint HorizontalAlignmentRight		= 0x002;
-			constexpr uint HorizontalAlignmentFill		= 0x003;
 			constexpr uint VerticalAlignmentTop			= 0x000;
 			constexpr uint VerticalAlignmentCenter		= 0x004;
 			constexpr uint VerticalAlignmentBottom		= 0x008;
-			constexpr uint EnableWordWrap				= 0x010;
-			constexpr uint EnableEllipsis				= 0x020;
-			constexpr uint EnableClipping				= 0x040;
-			constexpr uint Underlined					= 0x100;
-			constexpr uint Strikedout					= 0x200;
+			constexpr uint EnableClipping				= 0x010;
+			constexpr uint Underlined					= 0x020;
+			constexpr uint Strikedout					= 0x040;
 		}
 		class AggregateFont : public Object
 		{
@@ -47,7 +44,10 @@ namespace ESSE
 			ObjectDictionary<oref<IBitmap>, Set<oref<IBitmapBrush>>> _device_bitmaps;
 			ObjectDictionary<double, IBlurEffectBrush> _blur_brushes;
 			oref<IInversionEffectBrush> _inversion_brush;
-			uint _allocation_counter;
+			uint _brush_allocation_counter, _bitmap_allocation_counter;
+		private:
+			void _brush_cache_cleanup(void) noexcept;
+			void _bitmap_cache_cleanup(void) noexcept;
 		public:
 			DeviceCache(IDeviceContext2D * context);
 			virtual ~DeviceCache(void) override;
@@ -62,7 +62,22 @@ namespace ESSE
 		};
 		class Typesetter : public Object
 		{
-			// TODO: IMPLEMENT FIELDS
+			oref<IFont> _primary_font;
+			oref<AggregateFont> _primary_aggregate_font;
+			ucs4_string _text;
+			Color _default_color;
+			uint _flags;
+			array<uint> _glyphs;
+			array<IFont *> _fonts;
+			array<Color> _colors;
+			array<double> _position_x, _position_y, _advances;
+			FontMetrics _metrics;
+			Index2 _extents;
+			oref<IGlyphRun> _run;
+			oref<IColorBrush> _brush;
+		private:
+			void _reset_attributes(void) noexcept;
+			void _reset_layout(void) noexcept;
 		public:
 			Typesetter(IFont * font, const string & text, uint flags, const Color & color);
 			Typesetter(AggregateFont * font, const string & text, uint flags, const Color & color);
@@ -71,20 +86,14 @@ namespace ESSE
 			// Rendering and general control
 			void Render(IDeviceContext2D * context, DeviceCache * cache, const Rectangle & at) noexcept;
 			void ResetCache(void) noexcept;
-			void ResetAttribution(void) noexcept;
 			// Statistical requests
 			uint GetTextLength(void) noexcept;
 			const unichar32 * GetText(void) noexcept;
 			Index2 GetExtents(void) noexcept;
-			Index2 GetExtents(uint for_width) noexcept;
 			void GetGlyphRectangles(uint from, uint count, double * pleft, double * pright, double * ptop, double * pbottom) noexcept;
 			// Setting the rendering properties
-			void SetTabStops(const double * stops, uint num_stops, double generic_stop) noexcept;
-			void SetLineSpacingFactor(double factor) noexcept;
 			void SetColors(const Color * colors, uint from, uint num_clr) noexcept;
 			void SetAdvances(const double * advances, uint from, uint num_adv) noexcept;
-			void AddAttributeRange(uint from, uint to, IFont * font_override, uint flags_override, uint flag_mask) noexcept;
-			void AddAttributeRange(uint from, uint to, AggregateFont * font_override, uint flags_override, uint flag_mask) noexcept;
 		};
 	}
 }

@@ -360,6 +360,8 @@ namespace ESSE
 			double HorizontalAdvance;
 			double HorizontalLeftBearing;
 			double HorizontalRightBearing;
+			double HorizontalTopBearing;
+			double HorizontalBottomBearing;
 		};
 
 		class IDevice : public Object

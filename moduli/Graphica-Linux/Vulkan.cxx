@@ -3390,11 +3390,12 @@ namespace ESSE
 					FontGlyphMetrics gm;
 					fonts[i]->GetFontMetrics(fm);
 					fonts[i]->GetGlyphMetrics(glyphs + i, &gm, 1);
+					double threshold = (fm.Ascent - fm.Descent) * 0.25;
 					double mnx, mxx, mny, mxy;
-					auto left = px[i] + gm.HorizontalLeftBearing;
-					auto right = px[i] + gm.HorizontalAdvance - gm.HorizontalRightBearing;
-					auto top = py[i] - fm.Ascent;
-					auto bottom = py[i] - fm.Descent;
+					auto left = px[i] + gm.HorizontalLeftBearing - threshold;
+					auto right = px[i] + gm.HorizontalAdvance - gm.HorizontalRightBearing + threshold;
+					auto top = py[i] - gm.HorizontalTopBearing - threshold;
+					auto bottom = py[i] - gm.HorizontalBottomBearing + threshold;
 					if (transform) {
 						double x[4], y[4];
 						x[0] = transform[0] * left + transform[1] * top + transform[2];
@@ -3428,8 +3429,8 @@ namespace ESSE
 				}
 				if (undefined) return 0;
 				result->_aabb = Rectangle(floor(bl), floor(bt), ceil(br), ceil(bb));
-				uint sx = min<int>(result->_aabb.right - result->_aabb.left, _main_destination->GetWidth());
-				uint sy = min<int>(result->_aabb.bottom - result->_aabb.top, _main_destination->GetHeight());
+				uint sx = min<int>(result->_aabb.right - result->_aabb.left, 16384);
+				uint sy = min<int>(result->_aabb.bottom - result->_aabb.top, 16384);
 				result->_surface = _parent_factory->CreateBitmap(sx, sy, 0);
 				if (!result->_surface) return 0;
 				result->_surface_context = _parent_factory->CreateBitmapContext(result->_surface);
@@ -3808,10 +3809,15 @@ namespace ESSE
 				auto & clipping = _clipboxes.GetLast()->GetValue();
 				auto new_view = Rectangle::Intersect(Rectangle(clipping.left - at.x, clipping.top - at.y, clipping.right - at.x, clipping.bottom - at.y), r->_aabb);
 				if (!r->_surface_brush || Rectangle::Intersect(new_view, r->_current_view) != new_view) {
+					if (new_view.right - new_view.left <= r->_surface->GetWidth()) r->_current_view.left = r->_aabb.left;
+					else r->_current_view.left = new_view.left;
+					if (new_view.bottom - new_view.top <= r->_surface->GetHeight()) r->_current_view.top = r->_aabb.top;
+					else r->_current_view.top = new_view.top;
+					r->_current_view.right = r->_current_view.left + r->_surface->GetWidth();
+					r->_current_view.bottom = r->_current_view.top + r->_surface->GetHeight();
 					if (!r->_surface_context->BeginRendering(TextureLoadAction::Clear, 0)) return;
-					r->_surface_context->RenderGlyphRun(r->_inner, Index2(-new_view.left, -new_view.top));
+					r->_surface_context->RenderGlyphRun(r->_inner, Index2(-r->_current_view.left, -r->_current_view.top));
 					if (!r->_surface_context->EndRendering()) return;
-					r->_current_view = Rectangle(new_view.left, new_view.top, new_view.left + r->_surface->GetWidth(), new_view.top + r->_surface->GetHeight());
 					r->_surface_brush = CreateBitmapBrush(r->_surface, Rectangle(0, 0, r->_surface->GetWidth(), r->_surface->GetHeight()));
 					if (!r->_surface_brush) return;
 				}
