@@ -667,7 +667,7 @@ namespace ESSE
 			oref<MenuVisuals> _visuals;
 			bool _has_menu;
 		public:
-			MenuService(Windows::IWindowSystem * system) : _system(system) {}
+			MenuService(Windows::IWindowSystem * system) : _system(system), _has_menu(false) {}
 			virtual ~MenuService(void) override {}
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"Linux Menu Service"; ESSE_TRY_OUTRO(string()) }
 			virtual oref<Windows::IMenu> CreateMenu(void) noexcept override { try { return oref<Windows::IMenu>::CreateOwned(new Menu(this)); } catch (...) { return 0; } }

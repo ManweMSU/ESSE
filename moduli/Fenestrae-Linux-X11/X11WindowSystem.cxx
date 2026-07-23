@@ -1141,7 +1141,7 @@ namespace ESSE
 				Window root = api->XRootWindow(display, api->XDefaultScreen(display)), child, null;
 				int x, y, atx = at.x, aty = at.y;
 				while (true) {
-					if (!api->XTranslateCoordinates(display, root, root, at.x, at.y, &x, &y, &child)) return false;
+					if (!api->XTranslateCoordinates(display, root, root, atx, aty, &x, &y, &child)) return false;
 					if (child) {
 						if (child == _window) return true;
 						if (!api->XTranslateCoordinates(display, root, child, x, y, &atx, &aty, &null)) return false;
@@ -2376,6 +2376,7 @@ namespace ESSE
 				auto x_accent_color = Color(0x36, 0x47, 0xFF);
 				DBus::Variant color_scheme;
 				array<DBus::Variant> accent_color(3);
+				if (!_dbus) goto no_system_theme;
 				if (!_dbus->BeginInvocation("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings", "ReadOne")) goto no_system_theme;
 				if (!_dbus->AddStringArgument(U"org.freedesktop.appearance")) goto no_system_theme;
 				if (!_dbus->AddStringArgument(U"color-scheme")) goto no_system_theme;
