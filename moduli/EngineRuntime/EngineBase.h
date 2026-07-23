@@ -97,11 +97,19 @@ namespace Engine
 		bool friend operator == (const ImmutableString & a, const widechar * b);
 		bool friend operator == (const wchar_t * a, const ImmutableString & b);
 		bool friend operator == (const ImmutableString & a, const wchar_t * b);
+		bool friend operator == (widechar a, const ImmutableString & b);
+		bool friend operator == (const ImmutableString & a, widechar b);
+		bool friend operator == (wchar_t a, const ImmutableString & b);
+		bool friend operator == (const ImmutableString & a, wchar_t b);
 		bool friend operator != (const ImmutableString & a, const ImmutableString & b);
 		bool friend operator != (const widechar * a, const ImmutableString & b);
 		bool friend operator != (const ImmutableString & a, const widechar * b);
 		bool friend operator != (const wchar_t * a, const ImmutableString & b);
 		bool friend operator != (const ImmutableString & a, const wchar_t * b);
+		bool friend operator != (widechar a, const ImmutableString & b);
+		bool friend operator != (const ImmutableString & a, widechar b);
+		bool friend operator != (wchar_t a, const ImmutableString & b);
+		bool friend operator != (const ImmutableString & a, wchar_t b);
 
 		bool friend operator <= (const ImmutableString & a, const ImmutableString & b);
 		bool friend operator >= (const ImmutableString & a, const ImmutableString & b);

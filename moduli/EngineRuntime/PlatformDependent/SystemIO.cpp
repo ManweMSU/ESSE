@@ -112,6 +112,7 @@ namespace Engine
 					Volume vol;
 					vol.Label = v.label.GetData();
 					vol.Path = v.root_path.GetData();
+					result->Append(vol);
 				}
 				result->Retain();
 				return result;

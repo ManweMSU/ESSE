@@ -191,6 +191,76 @@ public:
 	virtual void HandleStatusIconCommand(Windows::IStatusBarIcon * icon, int id) noexcept { con->WriteLine(U"STATUS COMMAND: " + string(uint(id))); Windows::GetWindowSystem()->EnumerateTopLevelWindows()->ElementAt(0)->RequireAttention(); }
 };
 
+oref<Windows::IMenuItem> CreateTestMenuItem(int i, int j)
+{
+	auto ws = Windows::GetWindowSystem();
+	auto mi = ws->CreateMenuItem();
+	auto id = 100 * i + j;
+	mi->SetText(FormatString(U"Элемент меню %0.%1", i, j));
+	mi->SetSideText(id);
+	mi->SetID(id);
+	mi->Check(j % 2);
+	mi->Enable(j % 3);
+	return mi;
+}
+oref<Windows::IMenuItem> CreateTestMenuSeparator(void)
+{
+	auto ws = Windows::GetWindowSystem();
+	auto mi = ws->CreateMenuItem();
+	mi->SetIsSeparator(true);
+	return mi;
+}
+oref<Windows::IMenu> CreateTestMenu(void)
+{
+	auto ws = Windows::GetWindowSystem();
+	auto mi11 = CreateTestMenuItem(1, 1);
+	auto mi12 = CreateTestMenuItem(1, 2);
+	auto mi13 = CreateTestMenuItem(1, 3);
+	auto mi14 = CreateTestMenuItem(1, 4);
+	auto mi15 = CreateTestMenuItem(1, 5);
+	auto mi21 = CreateTestMenuItem(2, 1);
+	auto mi22 = CreateTestMenuItem(2, 2);
+	auto mi23 = CreateTestMenuItem(2, 3);
+	auto mi24 = CreateTestMenuItem(2, 4);
+	auto mi31 = CreateTestMenuItem(3, 1);
+	auto mi32 = CreateTestMenuItem(3, 2);
+	auto mi33 = CreateTestMenuItem(3, 3);
+	auto mi34 = CreateTestMenuItem(3, 4);
+	auto mi41 = CreateTestMenuItem(4, 1);
+	auto mi42 = CreateTestMenuItem(4, 2);
+	auto mi43 = CreateTestMenuItem(4, 3);
+	auto mi44 = CreateTestMenuItem(4, 4);
+	auto s1 = CreateTestMenuSeparator();
+	auto s2 = CreateTestMenuSeparator();
+	auto m1 = ws->CreateMenu();
+	auto m2 = ws->CreateMenu();
+	auto m3 = ws->CreateMenu();
+	auto m4 = ws->CreateMenu();
+	m1->AppendMenuItem(mi11);
+	m1->AppendMenuItem(mi12);
+	m1->AppendMenuItem(s1);
+	m1->AppendMenuItem(mi13);
+	m1->AppendMenuItem(mi14);
+	m1->AppendMenuItem(s2);
+	m1->AppendMenuItem(mi15);
+	m2->AppendMenuItem(mi21);
+	m2->AppendMenuItem(mi22);
+	m2->AppendMenuItem(mi23);
+	m2->AppendMenuItem(mi24);
+	m3->AppendMenuItem(mi31);
+	m3->AppendMenuItem(mi32);
+	m3->AppendMenuItem(mi33);
+	m3->AppendMenuItem(mi34);
+	m4->AppendMenuItem(mi41);
+	m4->AppendMenuItem(mi42);
+	m4->AppendMenuItem(mi43);
+	m4->AppendMenuItem(mi44);
+	mi11->SetSubmenu(m2);
+	mi14->SetSubmenu(m3);
+	mi22->SetSubmenu(m4);
+	return m1;
+}
+
 int Main(void)
 {
 	auto con = ESSE::IO::CreateConsole();
@@ -216,11 +286,22 @@ int Main(void)
 		auto sicon = ws->CreateStatusBarIcon();
 		auto iicon = DecodeImage(StaticMemoryStream::Create(picon, licon));
 		sicon->SetEventID(777);
+		sicon->SetMenu(CreateTestMenu());
 		sicon->SetCallback(hdlr);
 		sicon->SetIcon(iicon);
 		sicon->SetIconColorUsage(Windows::StatusBarIconColorUsage::Monochromic);
 		sicon->SetTooltip(U"VALERA");
 		sicon->PresentIcon(true);
+
+		Engine::UI::CurrentScaleFactor = ws->GetDefaultScreen()->GetScaleFactor();
+		auto ews = Engine::Windows::GetWindowSystem();
+		Engine::Windows::OpenFileInfo info;
+		info.Formats.Append(Engine::Windows::FileFormat());
+		info.Formats.LastElement().Extensions << U"txt";
+		info.Formats.LastElement().Description = U"A text file";
+		info.MultiChoose = true;
+		ews->OpenFileDialog(&info, 0, 0);
+		console.WriteLine(static_cast<const unichar32 *>(info.Files.ToString()));
 
 		ws->PushUserNotification("VALERA", "PIZDUK", iicon);
 		ws->Beep();

@@ -223,6 +223,15 @@ namespace ESSE
 							limit--;
 							if (limit != inter_io[1] && limit != STDIN_FILENO && limit != STDOUT_FILENO && limit != STDERR_FILENO) close(limit);
 						}
+						sigset_t set;
+						sigemptyset(&set);
+						signal(SIGPIPE, SIG_DFL);
+						signal(SIGWINCH, SIG_DFL);
+						signal(SIGINT, SIG_DFL);
+						signal(SIGQUIT, SIG_DFL);
+						signal(SIGHUP, SIG_DFL);
+						signal(SIGTERM, SIG_DFL);
+						sigprocmask(SIG_SETMASK, &set, 0);
 						if (!ErrorTest(local)) for (auto & t : try_images) {
 							argv[0] = const_cast<char *>(t.GetData());
 							if (desc.flags & CreateProcessOverrideEnvironment) execve(argv[0], argv, env);

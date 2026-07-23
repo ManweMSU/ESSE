@@ -235,10 +235,10 @@ namespace ESSE
 		void Typesetter::GetGlyphRectangles(uint from, uint count, double * pleft, double * pright, double * ptop, double * pbottom) noexcept
 		{
 			for (uintptr i = 0; i < count; i++) {
-				if (pleft) pleft[i] = _position_x[i];
-				if (pright) pright[i] = _position_x[i] + _advances[i];
-				if (ptop) ptop[i] = _position_y[i] - _metrics.Ascent;
-				if (pbottom) pbottom[i] = _position_y[i] + _metrics.Descent;
+				if (pleft) pleft[i] = _position_x[from + i];
+				if (pright) pright[i] = _position_x[from + i] + _advances[from + i];
+				if (ptop) ptop[i] = _position_y[from + i] - _metrics.Ascent;
+				if (pbottom) pbottom[i] = _position_y[from + i] + _metrics.Descent;
 			}
 		}
 		void Typesetter::SetColors(const Color * colors, uint from, uint num_clr) noexcept
@@ -248,7 +248,8 @@ namespace ESSE
 		}
 		void Typesetter::SetAdvances(const double * advances, uint from, uint num_adv) noexcept
 		{
-			for (uintptr i = 0; i < num_adv; i++) _advances[from + i] = advances[i];
+			if (advances) for (uintptr i = 0; i < num_adv; i++) _advances[from + i] = advances[i];
+			else _reset_attributes();
 			_reset_layout();
 			_run.Clear();
 		}

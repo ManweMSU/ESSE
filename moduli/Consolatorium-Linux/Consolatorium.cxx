@@ -575,16 +575,16 @@ namespace ESSE
 				sigset_t set;
 				if (sigemptyset(&set) < 0) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				if (sevent_mask & ConsoleSessionEventMask::ControlC) {
-					if (sigaddset(&set, SIGINT) < 0 || signal(SIGINT, SIG_IGN)) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
+					if (sigaddset(&set, SIGINT) < 0 || signal(SIGINT, SIG_IGN) == SIG_ERR) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				} else signal(SIGINT, SIG_DFL);
 				if (sevent_mask & ConsoleSessionEventMask::Quit) {
-					if (sigaddset(&set, SIGQUIT) < 0 || signal(SIGQUIT, SIG_IGN)) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
+					if (sigaddset(&set, SIGQUIT) < 0 || signal(SIGQUIT, SIG_IGN) == SIG_ERR) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				} else signal(SIGQUIT, SIG_DFL);
 				if (sevent_mask & ConsoleSessionEventMask::ConsoleClosed) {
-					if (sigaddset(&set, SIGHUP) < 0 || signal(SIGHUP, SIG_IGN)) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
+					if (sigaddset(&set, SIGHUP) < 0 || signal(SIGHUP, SIG_IGN) == SIG_ERR) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				} else signal(SIGHUP, SIG_DFL);
 				if (sevent_mask & ConsoleSessionEventMask::Terminate) {
-					if (sigaddset(&set, SIGTERM) < 0 || signal(SIGTERM, SIG_IGN)) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
+					if (sigaddset(&set, SIGTERM) < 0 || signal(SIGTERM, SIG_IGN) == SIG_ERR) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				} else signal(SIGTERM, SIG_DFL);
 				if (sigprocmask(SIG_SETMASK, &set, 0) < 0) { Linux::ErrorSetPosix(ectx); _console_event_handler.Clear(); Memory::ReleaseRootLock(); return; }
 				Memory::ReleaseRootLock();

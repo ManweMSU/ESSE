@@ -124,7 +124,7 @@ namespace ESSE
 						}
 					}
 					if (nearest_timer >= 0) {
-						timeout = date_fire - date_now;
+						timeout = int(date_fire - date_now);
 						if (timeout < 0) timeout = 0;
 					} else timeout = -1;
 					if (_api->XPending(_con->GetXDisplay())) {
@@ -136,14 +136,16 @@ namespace ESSE
 					}
 					if (poll_result > 0) {
 						if (poll_array[0].revents) {
-							_api->XNextEvent(_con->GetXDisplay(), &event);
-							if (event.type == MappingNotify) _api->XRefreshKeyboardMapping(&event.xmapping);
-							else if (event.type == Expose) {
-								auto responder = _window_inputs[event.xany.window];
-								if (responder) ScheduleWindowUpdate(event.xany.window);
-							} else {
-								auto responder = _window_inputs[event.xany.window];
-								if (responder) (*responder)->HandleEvent(event.xany.window, &event);
+							while (_api->XPending(_con->GetXDisplay())) {
+								_api->XNextEvent(_con->GetXDisplay(), &event);
+								if (event.type == MappingNotify) _api->XRefreshKeyboardMapping(&event.xmapping);
+								else if (event.type == Expose) {
+									auto responder = _window_inputs[event.xany.window];
+									if (responder) ScheduleWindowUpdate(event.xany.window);
+								} else {
+									auto responder = _window_inputs[event.xany.window];
+									if (responder) (*responder)->HandleEvent(event.xany.window, &event);
+								}
 							}
 						}
 						for (uintptr i = 1; i < poll_array.GetLength(); i++) if (poll_array[i].revents) {

@@ -194,15 +194,17 @@ namespace ESSE
 			virtual Graphica::BrushType GetBrushType(void) noexcept override { return Graphica::BrushType::Color; }
 			virtual void OverrideGradientPoints(const Index2 & from, const Index2 & to) noexcept override
 			{
-				_from = from; _to = to;
-				double dx = to.x - from.x, dy = to.y - from.y;
-				double a = atan2(dy, dx);
-				double ir = 1.0 / sqrt(dx * dx + dy * dy);
-				cairo_matrix_t matrix;
-				_api->cairo_matrix_init_scale(matrix, ir, ir);
-				_api->cairo_matrix_rotate(matrix, -a);
-				_api->cairo_matrix_translate(matrix, -_from.x, -_from.y);
-				_api->cairo_pattern_set_matrix(_gradient, matrix);
+				if (_api) {
+					_from = from; _to = to;
+					double dx = to.x - from.x, dy = to.y - from.y;
+					double a = atan2(dy, dx);
+					double ir = 1.0 / sqrt(dx * dx + dy * dy);
+					cairo_matrix_t matrix;
+					_api->cairo_matrix_init_scale(matrix, ir, ir);
+					_api->cairo_matrix_rotate(matrix, -a);
+					_api->cairo_matrix_translate(matrix, -_from.x, -_from.y);
+					_api->cairo_pattern_set_matrix(_gradient, matrix);
+				}
 			}
 		};
 		class CairoBitmapBrush : public Graphica::IBitmapBrush

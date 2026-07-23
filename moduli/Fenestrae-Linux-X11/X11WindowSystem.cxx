@@ -8,6 +8,7 @@
 #include <Cor-Linux/CorLinuxClasses.h>
 #include <Graphica/Graphica.h>
 #include <Graphica-Linux/DeviceCairo.h>
+#include <Minuti-Linux/Menues.h>
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
@@ -390,10 +391,23 @@ namespace ESSE
 			Index2 _origin, _size;
 			Index2 _min, _max, _last_click_pos;
 			Rectangle _margins;
-			uint32 _modal_level, _effective_style;
+			uint32 _modal_level, _effective_style, _popup_modal_mode;
 			uint32 _state_mask; // 1 - maximized horz, 2 - maximized vert, 4 - minimized, 8 - fullscreen
 			uint32 _last_click_mask, _last_click_time;
 		private:
+			void _exit_popup_modal(void) noexcept
+			{
+				if (!_popup_modal_mode) return;
+				_con->GetAPI()->XUngrabPointer(_con->GetXDisplay(), CurrentTime);
+				if (_callback) _callback->EndPopup(this);
+				_popup_modal_mode = 0;
+			}
+			bool _is_child_window_handle(Window window) noexcept
+			{
+				if (window == _window) return true;
+				for (auto & w : _children) if (w._is_child_window_handle(window)) return true;
+				return false;
+			}
 			bool _is_locked(void) noexcept
 			{
 				if (_locked) return true;
@@ -424,6 +438,7 @@ namespace ESSE
 						api->XSync(display, false);
 					}
 				} else if (_mapped && !must_be_visible) {
+					_exit_popup_modal();
 					_mapped = false;
 					for (auto & c : _children) c._internal_show_window();
 					if (_state_mask & 4) api->XWithdrawWindow(display, _window, api->XDefaultScreen(display));
@@ -493,7 +508,7 @@ namespace ESSE
 				_con = _system_x11->GetConnection();
 				_cursor = _system->GetSystemCursor(Windows::SystemCursorClass::Arrow);
 				_atoms = reinterpret_cast<XStandardAtoms *>(_system_x11->GetStandardAtoms());
-				_effective_style = _state_mask = 0;
+				_effective_style = _state_mask = _popup_modal_mode = 0;
 				_override_z_order = 0;
 				_last_click_pos = Index2(0, 0);
 				_last_click_mask = _last_click_time = 0;
@@ -569,6 +584,7 @@ namespace ESSE
 				}
 				_window = api->XCreateWindow(display, root, rect.left, rect.top, w, h, 0, use_depth, InputOutput, use_visual, use_mask, &attr);
 				if (_visual) _colormap = attr.colormap; else _colormap = 0;
+				if (!_visual) _visual = api->XDefaultVisual(display, api->XDefaultScreen(display));
 				if (!_system_x11->GetDispatch()->RegisterWindowHandler(_window, this)) {
 					api->XDestroyWindow(display, _window);
 					if (_colormap) api->XFreeColormap(display, _colormap);
@@ -806,6 +822,13 @@ namespace ESSE
 						if (code) _callback->KeyIsUp(this, code, mask);
 					}
 				} else if (event->type == ButtonPress) {
+					if (_popup_modal_mode && event->xbutton.button >= Button1 && event->xbutton.button <= Button3) {
+						auto api = _con->GetAPI();
+						auto display = _con->GetXDisplay();
+						Window root = api->XRootWindow(display, api->XDefaultScreen(display)), child;
+						int x, y;
+						if (api->XTranslateCoordinates(display, _window, root, event->xbutton.x, event->xbutton.y, &x, &y, &child) && child != _window && !_is_child_window_handle(child)) _exit_popup_modal();
+					}
 					if (!_is_locked() && _callback) {
 						auto pos = Index2(event->xbutton.x, event->xbutton.y);
 						uint32 mask = 0;
@@ -908,6 +931,7 @@ namespace ESSE
 			virtual void Destroy(void) noexcept override
 			{
 				if (!_window || (_modal_level && _modal_level < _system_x11->GetModalityLevel())) return;
+				_exit_popup_modal();
 				if (_callback) _callback->Destroyed(this);
 				_callback = 0;
 				while (_children.GetLength()) _children.LastElement().Destroy();
@@ -1149,6 +1173,13 @@ namespace ESSE
 			}
 			virtual Windows::ICursor * GetCursor(void) noexcept override { return _cursor; }
 			virtual void SetCursor(Windows::ICursor * const & cursor) noexcept override { if (!_window) return; _cursor = cursor; }
+			virtual void ActAsPopup(void) noexcept override
+			{
+				auto api = _con->GetAPI();
+				auto display = _con->GetXDisplay();
+				api->XGrabPointer(display, _window, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ButtonMotionMask | EnterWindowMask | LeaveWindowMask, GrabModeAsync, GrabModeAsync, 0, 0, CurrentTime);
+				_popup_modal_mode = 1;
+			}
 			virtual bool IsFocused(void) noexcept override
 			{
 				if (!_window) return false;
@@ -1159,7 +1190,15 @@ namespace ESSE
 				api->XGetInputFocus(display, &focused, &revert);
 				return focused == _window;
 			}
-			virtual void SetFocus(void) noexcept override {}
+			virtual void SetFocus(void) noexcept override
+			{
+				if (!IsFocused()) {
+					auto api = _con->GetAPI();
+					auto display = _con->GetXDisplay();
+					if (_effective_style & Windows::WindowStylePopup) api->XSetInputFocus(display, _window, 0, CurrentTime);
+					else Activate();
+				}
+			}
 			virtual void SetTimer(uint32 id, uint32 period) noexcept override
 			{
 				if (!_window) return;
@@ -1677,6 +1716,7 @@ namespace ESSE
 			oref<DBus::IConnection> _dbus;
 			oref<Semaphore> _ibus_sync;
 			oref<Thread> _signal_thread;
+			oref<Linux::IMenuService> _menu_service;
 			handle _ibus_in, _ibus_out;
 			int _ebus;
 			ucs1_string _ebus_socket_name;
@@ -2073,6 +2113,12 @@ namespace ESSE
 					} else { _xlib_api->XFree(pdata); return 0; }
 				} else return 0;
 			}
+			void _update_window_icon(XWindow * window, unsigned long * pdata, uintptr length) noexcept
+			{
+				_con->GetAPI()->XChangeProperty(_con->GetXDisplay(), window->GetHandle(), _atoms.net_wm_icon, _atoms.cardinal, 32, PropModeReplace, reinterpret_cast<uint8 *>(pdata), length);
+				auto count = window->GetChildrenCount();
+				for (uintptr i = 0; i < count; i++) _update_window_icon(static_cast<XWindow *>(window->GetChildWindow(i)), pdata, length);
+			}
 		public:
 			XWindowSystem(void) : _ebus(-1), _callback(0), _hotkeys(0x10), _file_list_to_open(1), _first_time_loop(true), _break_without_windows(false)
 			{
@@ -2087,10 +2133,10 @@ namespace ESSE
 				if (!_ibus_sync) throw OutOfMemoryException();
 				sigset_t set;
 				if (sigemptyset(&set) < 0) throw InputOutputException(Errores::SuberrorIO::Unknown);
-				if (sigaddset(&set, SIGINT) < 0 || signal(SIGINT, SIG_IGN)) throw InputOutputException(Errores::SuberrorIO::Unknown);
-				if (sigaddset(&set, SIGQUIT) < 0 || signal(SIGQUIT, SIG_IGN)) throw InputOutputException(Errores::SuberrorIO::Unknown);
-				if (sigaddset(&set, SIGHUP) < 0 || signal(SIGHUP, SIG_IGN)) throw InputOutputException(Errores::SuberrorIO::Unknown);
-				if (sigaddset(&set, SIGTERM) < 0 || signal(SIGTERM, SIG_IGN)) throw InputOutputException(Errores::SuberrorIO::Unknown);
+				if (sigaddset(&set, SIGINT) < 0 || signal(SIGINT, SIG_IGN) == SIG_ERR) throw InputOutputException(Errores::SuberrorIO::Unknown);
+				if (sigaddset(&set, SIGQUIT) < 0 || signal(SIGQUIT, SIG_IGN) == SIG_ERR) throw InputOutputException(Errores::SuberrorIO::Unknown);
+				if (sigaddset(&set, SIGHUP) < 0 || signal(SIGHUP, SIG_IGN) == SIG_ERR) throw InputOutputException(Errores::SuberrorIO::Unknown);
+				if (sigaddset(&set, SIGTERM) < 0 || signal(SIGTERM, SIG_IGN) == SIG_ERR) throw InputOutputException(Errores::SuberrorIO::Unknown);
 				if (sigprocmask(SIG_SETMASK, &set, 0) < 0) throw InputOutputException(Errores::SuberrorIO::Unknown);
 				if (!_init_standard_atoms()) throw OutOfMemoryException();
 				try {
@@ -2609,7 +2655,20 @@ namespace ESSE
 					return result;
 				} catch (...) { return 0; }
 			}
-			virtual void SetApplicationIcon(Picturae::Image * icon) noexcept override { _appicon = icon; }
+			virtual void SetApplicationIcon(Picturae::Image * icon) noexcept override
+			{
+				_appicon = icon;
+				if (_appicon) try {
+					array<unsigned long> icon_data(0x10000);
+					for (auto & f : *_appicon) {
+						auto fc = f.Convert(Picturae::PixelFormat::B8G8R8A8, Picturae::AlphaMode::Straight, Picturae::ScanOrigin::TopLeft);
+						icon_data << fc->GetDesc().width;
+						icon_data << fc->GetDesc().height;
+						for (uint y = 0; y < fc->GetDesc().height; y++) for (uint x = 0; x < fc->GetDesc().width; x++) icon_data << fc->GetPixel(x, y);
+					}
+					for (auto & w : _root_windows) _update_window_icon(static_cast<XWindow *>(w.Inner()), icon_data, icon_data.GetLength());
+				} catch (...) {}
+			}
 			virtual void SetApplicationBadge(const string & text) noexcept override {}
 			virtual void SetApplicationIconVisibility(bool visible) noexcept override {}
 			virtual void Beep(void) noexcept override
@@ -2637,6 +2696,7 @@ namespace ESSE
 			virtual void SetCallback(Windows::IApplicationCallback * callback) noexcept override { _callback = callback; }
 			virtual void RunMainLoop(bool while_there_are_windows) noexcept override
 			{
+				auto old_break_without_windows = _break_without_windows;
 				_break_without_windows = while_there_are_windows;
 				if (_first_time_loop || _file_list_to_open.GetLength()) {
 					bool opened = false, ftl = _first_time_loop;
@@ -2648,6 +2708,7 @@ namespace ESSE
 					if (!opened && ftl && _callback && _callback->AcceptsApplicationCommand(Windows::ApplicationCommand::CreateFile)) _callback->HandleApplicationCommand(Windows::ApplicationCommand::CreateFile, string());
 				}
 				_dispatch->RunEventLoop();
+				_break_without_windows = old_break_without_windows;
 			}
 			virtual void ExitMainLoop(void) noexcept override { _dispatch->BreakEventLoop(); }
 			virtual bool OpenFileDialog(Windows::OpenFileDialogDesc * desc, Windows::IWindow * parent, IDispatchTask * on_responce) noexcept override
@@ -2672,13 +2733,13 @@ namespace ESSE
 			}
 			virtual oref<Windows::IMenu> CreateMenu(void) noexcept override
 			{
-				// TODO: IMPLEMENT
-				return 0;
+				if (!_menu_service) _menu_service = Linux::IMenuService::CreateInstance(this);
+				if (_menu_service) return _menu_service->CreateMenu(); else return 0;
 			}
 			virtual oref<Windows::IMenuItem> CreateMenuItem(void) noexcept override
 			{
-				// TODO: IMPLEMENT
-				return 0;
+				if (!_menu_service) _menu_service = Linux::IMenuService::CreateInstance(this);
+				if (_menu_service) return _menu_service->CreateMenuItem(); else return 0;
 			}
 			virtual Index2 GetUserNotificationIconSize(void) noexcept override { double scale = _get_system_scale_factor(); return Index2(32 * scale, 32 * scale); }
 			virtual void PushUserNotification(const string & title, const string & text, Picturae::Image * icon) noexcept override

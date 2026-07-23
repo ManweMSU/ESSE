@@ -30,6 +30,7 @@ namespace ESSE
 		void IWindowCallback::RightButtonIsUp(IWindow * window, const Index2 & at) noexcept {}
 		void IWindowCallback::ScrollVertically(IWindow * window, const Index2 & at, double delta) noexcept {}
 		void IWindowCallback::ScrollHorizontally(IWindow * window, const Index2 & at, double delta) noexcept {}
+		void IWindowCallback::EndPopup(IWindow * window) noexcept {}
 		void IWindowCallback::Timer(IWindow * window, int timer_id) noexcept {}
 		void IWindowCallback::ThemeChanged(IWindow * window) noexcept {}
 		bool IWindowCallback::IsWindowCommandEnabled(IWindow * window, WindowCommand command) noexcept { return false; }

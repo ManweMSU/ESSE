@@ -29,6 +29,8 @@ CoCompila {
 	CR = "PlatformDependent/SystemPower.cpp"
 	CS = "PlatformDependent/SystemVideo.cpp"
 	CT = "PlatformDependent/SystemWindows.cpp"
+	CU = "PlatformDependent/linux-stdui/CommonDialogs.cpp"
+	CV = "PlatformDependent/linux-stdui/CommonDialogsUI.cpp"
 	DA = "PlatformSpecific/UnixFileAccess.cpp"
 	DB = "PlatformSpecific/WindowsShortcut.cpp"
 	EA = "Miscellaneous/ConsoleServices.cpp"

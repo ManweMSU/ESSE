@@ -53,7 +53,11 @@ namespace ESSE
 				setlocale(LC_ALL, "");
 				Unicode::Linux_UnicodeLibraryInitialize();
 				__this_process_pid = getpid();
-				signal(SIGPIPE, SIG_IGN);
+				struct sigaction sa;
+				sa.sa_handler = SIG_IGN;
+				sigemptyset(&sa.sa_mask);
+				sa.sa_flags = 0; 
+				sigaction(SIGPIPE, &sa, 0);
 			}
 		}
 		void ApplicationShutdown(void) noexcept {}

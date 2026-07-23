@@ -2,7 +2,7 @@
 
 #include "../Classes/CorObject.h"
 #include "../Classes/CorArray.hxx"
-#include "../Images/CorGraphics.h"
+#include "../Images/CorGraphicsExtensions.h"
 #include "../Tasks/CorTasks.h"
 
 namespace ESSE
@@ -164,8 +164,8 @@ namespace ESSE
 		class IMenuItemCallback
 		{
 		public:
-			virtual Index2 MeasureMenuItem(IMenuItem * item, Graphica::IDeviceContext2D * device) noexcept = 0;
-			virtual void RenderMenuItem(IMenuItem * item, Graphica::IDeviceContext2D * device, const Rectangle & at, bool hot_state) noexcept = 0;
+			virtual Index2 MeasureMenuItem(IMenuItem * item, Graphica::IDeviceContext2D * device, Graphica::DeviceCache * common_cache) noexcept = 0;
+			virtual void RenderMenuItem(IMenuItem * item, Graphica::IDeviceContext2D * device, Graphica::DeviceCache * common_cache, const Rectangle & at, bool hot_state) noexcept = 0;
 			virtual void MenuClosed(IMenuItem * item) noexcept = 0;
 			virtual void MenuItemDisposed(IMenuItem * item) noexcept;
 		};
@@ -211,6 +211,7 @@ namespace ESSE
 			virtual void ScrollVertically(IWindow * window, const Index2 & at, double delta) noexcept;
 			virtual void ScrollHorizontally(IWindow * window, const Index2 & at, double delta) noexcept;
 			// Miscellaneous event
+			virtual void EndPopup(IWindow * window) noexcept;
 			virtual void Timer(IWindow * window, int timer_id) noexcept;
 			virtual void ThemeChanged(IWindow * window) noexcept;
 			virtual bool IsWindowCommandEnabled(IWindow * window, WindowCommand command) noexcept;
@@ -312,6 +313,7 @@ namespace ESSE
 			virtual Index2 ConvertGlobalToClient(const Index2 & at) noexcept = 0;
 			virtual ICursor * GetCursor(void) noexcept = 0;
 			virtual void SetCursor(ICursor * const & cursor) noexcept = 0;
+			virtual void ActAsPopup(void) noexcept = 0;
 			virtual bool IsFocused(void) noexcept = 0;
 			virtual void SetFocus(void) noexcept = 0;
 			virtual void SetTimer(uint32 id, uint32 period) noexcept = 0;
@@ -330,6 +332,8 @@ namespace ESSE
 			virtual void SetCallback(IMenuItemCallback * const & callback) noexcept = 0;
 			virtual void * GetUserData(void) noexcept = 0;
 			virtual void SetUserData(void * const & data) noexcept = 0;
+			virtual Object * GetUserObject(void) noexcept = 0;
+			virtual void SetUserObject(Object * const & object) noexcept = 0;
 			virtual IMenu * GetSubmenu(void) noexcept = 0;
 			virtual void SetSubmenu(IMenu * const & menu) noexcept = 0;
 			virtual int GetID(void) noexcept = 0;
@@ -348,11 +352,15 @@ namespace ESSE
 		class IMenu : public Object
 		{
 		public:
+			virtual void * GetUserData(void) noexcept = 0;
+			virtual void SetUserData(void * const & data) noexcept = 0;
+			virtual Object * GetUserObject(void) noexcept = 0;
+			virtual void SetUserObject(Object * const & object) noexcept = 0;
 			virtual void AppendMenuItem(IMenuItem * item) noexcept = 0;
 			virtual void InsertMenuItem(IMenuItem * item, int at) noexcept = 0;
 			virtual void RemoveMenuItem(int at) noexcept = 0;
 			virtual IMenuItem * ElementAt(int at) noexcept = 0;
-			virtual int Length(void) noexcept = 0;
+			virtual int GetLength(void) noexcept = 0;
 			virtual IMenuItem * FindMenuItem(int id) noexcept = 0;
 			virtual int Perform(IWindow * owner, const Index2 & at) noexcept = 0;
 			virtual handle GetOSHandle(void) noexcept = 0;

@@ -519,7 +519,9 @@ namespace esse {
 			if (node) {
 				for (auto & v : node->GetValues()) {
 					resource_task task;
-					task.source_path = find_resource_file(state, state.project_root_path, node->GetValueString(v));
+					auto file_name = node->GetValueString(v);
+					if (file_name[0] == L'@') file_name = L"ert/" + file_name.Fragment(1, -1);
+					task.source_path = find_resource_file(state, state.project_root_path, file_name);
 					task.resource_name = v;
 					root->resource_list.InsertLast(task);
 				}
@@ -527,7 +529,9 @@ namespace esse {
 					auto locale = node->OpenNode(l);
 					if (locale) for (auto & v : locale->GetValues()) {
 						resource_task task;
-						task.source_path = find_resource_file(state, state.project_root_path, locale->GetValueString(v));
+						auto file_name = locale->GetValueString(v);
+						if (file_name[0] == L'@') file_name = L"ert/" + file_name.Fragment(1, -1);
+						task.source_path = find_resource_file(state, state.project_root_path, file_name);
 						task.resource_locale = l.LowerCase();
 						task.resource_name = v;
 						root->resource_list.InsertLast(task);
@@ -539,7 +543,9 @@ namespace esse {
 				auto attach = node->OpenNode(v);
 				if (attach) {
 					attach_task task;
-					task.source_path = find_resource_file(state, state.project_root_path, attach->GetValueString(L"From"));
+					auto file_name = attach->GetValueString(L"From");
+					if (file_name[0] == L'@') file_name = L"ert/" + file_name.Fragment(1, -1);
+					task.source_path = find_resource_file(state, state.project_root_path, file_name);
 					task.destination_path = attach->GetValueString(L"To");
 					root->attach_list.InsertLast(task);
 				}

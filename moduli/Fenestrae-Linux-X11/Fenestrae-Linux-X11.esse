@@ -6,7 +6,7 @@ CoIndentitas = "fenestrae-linux-x11"
 CoSystema { A = "Linux" }
 CoImplantatioAbstractionis = "fenestrae"
 CoImplantatioDefalta = true
-CoModuliRequisiti { A = "cor" B = "fenestrae" C = "dbus" D = "imagines" E = "auxilia" F = "graphica" }
+CoModuliRequisiti { A = "cor" B = "fenestrae" C = "dbus" D = "imagines" E = "auxilia" F = "graphica" G = "minuti-linux" }
 CoDefini { ESSE_MODULUS_FENESTRARUM_LINUX_X11 = true }
 CoCompila {
 	A = "X11DL.cxx"
