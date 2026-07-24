@@ -7,9 +7,6 @@ namespace ESSE
 {
 	namespace Linux
 	{
-		static constexpr double weightR = 0.2126;
-		static constexpr double weightG = 0.7152;
-		static constexpr double weightB = 0.0722;
 		struct MenuVisuals : public Object
 		{
 			double scale;
@@ -23,15 +20,6 @@ namespace ESSE
 			oref<Graphica::AggregateFont> font;
 			int background_subsize, selection_subsize, frame_size, border_size, font_size, item_size, separator_size;
 		private:
-			static Color _brightness(const Color & a, double value) noexcept
-			{
-				double r = a.r / 255.0;
-				double g = a.g / 255.0;
-				double b = a.b / 255.0;
-				double V = weightR * r + weightG * g + weightB * b;
-				r *= value / V; g *= value / V; b *= value / V;
-				return Color(min(r, 1.0), min(g, 1.0), min(b, 1.0));
-			}
 			static Color _blend(const Color & a, const Color & b, double alpha) noexcept
 			{
 				uint an = min(max(alpha * 255.0, 0.0), 255.0);
@@ -150,18 +138,14 @@ namespace ESSE
 				if (scheme == Windows::ThemeColorScheme::Dark) {
 					background = Color(0x00, 0x00, 0x00, 0xC0);
 					background_solid = Color(0x20, 0x20, 0x20);
-					border = grayed = Color(0x80, 0x80, 0x80);
-					normal = Color(0xFF, 0xFF, 0xFF);
-					hot = Color(0x00, 0x00, 0x00);
-					selection_accent = _brightness(accent, 0.6);
 				} else {
 					background = Color(0xFF, 0xFF, 0xFF, 0xC0);
 					background_solid = Color(0xE0, 0xE0, 0xE0);
-					border = grayed = Color(0x80, 0x80, 0x80);
-					normal = Color(0x00, 0x00, 0x00);
-					hot = Color(0xFF, 0xFF, 0xFF);
-					selection_accent = _brightness(accent, 0.4);
 				}
+				border = theme->GetColor(Windows::ThemeColor::GrayedText);
+				normal = theme->GetColor(Windows::ThemeColor::MenuText);
+				hot = theme->GetColor(Windows::ThemeColor::MenuHotText);
+				selection_accent = theme->GetColor(Windows::ThemeColor::MenuHotBackground);
 				background_transparent = _create_rounded_shape(background_subsize + background_subsize + 2, background_subsize, frame_size, background, border);
 				background_fallback = _create_rounded_shape(background_subsize + background_subsize + 2, 0, frame_size, background_solid, border);
 				selection = _create_rounded_shape(selection_subsize + selection_subsize + 2, selection_subsize, 1, selection_accent, selection_accent);

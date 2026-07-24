@@ -243,9 +243,32 @@ namespace ESSE
 		class XTheme : public Windows::ITheme
 		{
 			Windows::ThemeColorScheme _scheme;
-			Color _accent;
+			Color _accent, _menu_selection_front, _menu_selection_back;
+		private:
+			static constexpr double weightR = 0.2126;
+			static constexpr double weightG = 0.7152;
+			static constexpr double weightB = 0.0722;
+			static Color _brightness(const Color & a, double value) noexcept
+			{
+				double r = a.r / 255.0;
+				double g = a.g / 255.0;
+				double b = a.b / 255.0;
+				if (!r && !g && !b) r = g = b = 1.0;
+				double V = weightR * r + weightG * g + weightB * b;
+				r *= value / V; g *= value / V; b *= value / V;
+				return Color(min(r, 1.0), min(g, 1.0), min(b, 1.0));
+			}
 		public:
-			XTheme(Windows::ThemeColorScheme scheme, Color accent) : _scheme(scheme), _accent(accent) {}
+			XTheme(Windows::ThemeColorScheme scheme, Color accent) : _scheme(scheme), _accent(accent)
+			{
+				if (scheme == Windows::ThemeColorScheme::Dark) {
+					_menu_selection_front = Color(0x00, 0x00, 0x00);
+					_menu_selection_back = _brightness(accent, 0.6);
+				} else {
+					_menu_selection_front = Color(0xFF, 0xFF, 0xFF);
+					_menu_selection_back = _brightness(accent, 0.4);
+				}
+			}
 			virtual ~XTheme(void) override {}
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"X11 Theme"; ESSE_TRY_OUTRO(string()) }
 			virtual Windows::ThemeColorScheme GetColorScheme(void) noexcept override { return _scheme; }
@@ -259,8 +282,8 @@ namespace ESSE
 					else if (color == Windows::ThemeColor::SelectedText) return Color(0x00, 0x00, 0x00);
 					else if (color == Windows::ThemeColor::MenuBackground) return Color(0x00, 0x00, 0x00, 0x00);
 					else if (color == Windows::ThemeColor::MenuText) return Color(0x00, 0x00, 0x00);
-					else if (color == Windows::ThemeColor::MenuHotBackground) return Color(0x36, 0x47, 0xFF);
-					else if (color == Windows::ThemeColor::MenuHotText) return Color(0xFF, 0xFF, 0xFF);
+					else if (color == Windows::ThemeColor::MenuHotBackground) return _menu_selection_back;
+					else if (color == Windows::ThemeColor::MenuHotText) return _menu_selection_front;
 					else if (color == Windows::ThemeColor::GrayedText) return Color(0x80, 0x80, 0x80);
 					else if (color == Windows::ThemeColor::Hyperlink) return Color(0x00, 0x00, 0xFF);
 				} else {
@@ -270,8 +293,8 @@ namespace ESSE
 					else if (color == Windows::ThemeColor::SelectedText) return Color(0xFF, 0xFF, 0xFF);
 					else if (color == Windows::ThemeColor::MenuBackground) return Color(0x00, 0x00, 0x00, 0x00);
 					else if (color == Windows::ThemeColor::MenuText) return Color(0xFF, 0xFF, 0xFF);
-					else if (color == Windows::ThemeColor::MenuHotBackground) return Color(0x36, 0x47, 0xFF);
-					else if (color == Windows::ThemeColor::MenuHotText) return Color(0xFF, 0xFF, 0xFF);
+					else if (color == Windows::ThemeColor::MenuHotBackground) return _menu_selection_back;
+					else if (color == Windows::ThemeColor::MenuHotText) return _menu_selection_front;
 					else if (color == Windows::ThemeColor::GrayedText) return Color(0x80, 0x80, 0x80);
 					else if (color == Windows::ThemeColor::Hyperlink) return Color(0x80, 0x80, 0xFF);
 				}
@@ -1711,6 +1734,7 @@ namespace ESSE
 			oref<XRANDRAPI> _xrandr_api;
 			oref<XRenderAPI> _xrender_api;
 			oref<XCursorAPI> _xcursor_api;
+			oref<XTestAPI> _xtest_api;
 			oref<XServerConnection> _con;
 			oref<XDispatch> _dispatch;
 			oref<DBus::IConnection> _dbus;
@@ -1730,7 +1754,7 @@ namespace ESSE
 			ObjectDictionary<uint, XCursorImage> _cursors;
 			Set<oref<Windows::IWindow>> _root_windows;
 			oref<Picturae::Image> _appicon;
-			bool _first_time_loop, _break_without_windows;
+			bool _first_time_loop, _break_without_windows, _xtest_available;
 			uint32 _modal_level;
 		private:
 			static int _signal_handler(void *) noexcept
@@ -2129,6 +2153,7 @@ namespace ESSE
 				try { _xrandr_api = owrap(new XRANDRAPI); } catch (...) {}
 				try { _xrender_api = owrap(new XRenderAPI); } catch (...) {}
 				try { _xcursor_api = owrap(new XCursorAPI); } catch (...) {}
+				try { _xtest_api = owrap(new XTestAPI); } catch (...) {}
 				_ibus_sync = CreateSemaphore(1);
 				if (!_ibus_sync) throw OutOfMemoryException();
 				sigset_t set;
@@ -2208,6 +2233,11 @@ namespace ESSE
 						_xkb.present = true;
 					} else _xkb.present = false;
 				} else _xkb.present = false;
+				if (_xtest_api) {
+					int a, b, c, d;
+					if (_xtest_api->XTestQueryExtension(_con->GetXDisplay(), &a, &b, &c, &d)) _xtest_available = true;
+					else _xtest_available = false;
+				} else _xtest_available = false;
 				IO::CreatePipe(_ibus_in, _ibus_out);
 				XSetWindowAttributes attr;
 				attr.event_mask = PropertyChangeMask;
@@ -2634,8 +2664,12 @@ namespace ESSE
 			{
 				auto api = _con->GetAPI();
 				auto display = _con->GetXDisplay();
-				auto root = api->XRootWindow(display, api->XDefaultScreen(display));
-				api->XWarpPointer(display, 0, root, 0, 0, 0, 0, position.x, position.y);
+				if (_xtest_available) {
+					_xtest_api->XTestFakeMotionEvent(display, api->XDefaultScreen(display), position.x, position.y, CurrentTime);
+				} else {
+					auto root = api->XRootWindow(display, api->XDefaultScreen(display));
+					api->XWarpPointer(display, 0, root, 0, 0, 0, 0, position.x, position.y);
+				}
 			}
 			virtual oref<Windows::ICursor> LoadCursor(Picturae::Picture * source) noexcept override
 			{
