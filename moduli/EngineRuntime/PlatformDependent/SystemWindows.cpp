@@ -235,7 +235,7 @@ namespace Engine
 			uint _mouse_state_mask; // 1 - left button pressed, 2 - right button pressed, 4 - mouse entered, 8 - mouse virtually captured
 			ESSE::Index2 _mouse_last_position;
 		public:
-			Window(ESSE::Windows::IWindow * inner, Windows::IWindowCallback * callback, const ESSE::Rectangle & margins) noexcept : _inner(inner), _callback(callback), _render_callback(0), _margins(margins), _mouse_state_mask(0)
+			Window(ESSE::Windows::IWindow * inner, Windows::IWindowCallback * callback, const ESSE::Rectangle & margins) : _inner(inner), _callback(callback), _render_callback(0), _margins(margins), _mouse_state_mask(0)
 			{
 				_inner->SetCallback(this);
 				_link = new EngineWindowLink;
@@ -484,20 +484,20 @@ namespace Engine
 			{
 				if (!_callback) return false;
 				try {
-					if (command == ESSE::Windows::WindowCommand::Save) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Save);
-					else if (command == ESSE::Windows::WindowCommand::SaveAs) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::SaveAs);
-					else if (command == ESSE::Windows::WindowCommand::Export) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Export);
-					else if (command == ESSE::Windows::WindowCommand::Print) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Print);
-					else if (command == ESSE::Windows::WindowCommand::Undo) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Undo);
-					else if (command == ESSE::Windows::WindowCommand::Redo) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Redo);
-					else if (command == ESSE::Windows::WindowCommand::Cut) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Cut);
-					else if (command == ESSE::Windows::WindowCommand::Copy) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Copy);
-					else if (command == ESSE::Windows::WindowCommand::Paste) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Paste);
-					else if (command == ESSE::Windows::WindowCommand::Duplicate) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Duplicate);
-					else if (command == ESSE::Windows::WindowCommand::Delete) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Delete);
-					else if (command == ESSE::Windows::WindowCommand::Find) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Find);
-					else if (command == ESSE::Windows::WindowCommand::Replace) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Replace);
-					else if (command == ESSE::Windows::WindowCommand::SelectAll) _callback->IsWindowEventEnabled(this, Windows::WindowHandler::SelectAll);
+					if (command == ESSE::Windows::WindowCommand::Save) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Save);
+					else if (command == ESSE::Windows::WindowCommand::SaveAs) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::SaveAs);
+					else if (command == ESSE::Windows::WindowCommand::Export) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Export);
+					else if (command == ESSE::Windows::WindowCommand::Print) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Print);
+					else if (command == ESSE::Windows::WindowCommand::Undo) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Undo);
+					else if (command == ESSE::Windows::WindowCommand::Redo) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Redo);
+					else if (command == ESSE::Windows::WindowCommand::Cut) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Cut);
+					else if (command == ESSE::Windows::WindowCommand::Copy) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Copy);
+					else if (command == ESSE::Windows::WindowCommand::Paste) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Paste);
+					else if (command == ESSE::Windows::WindowCommand::Duplicate) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Duplicate);
+					else if (command == ESSE::Windows::WindowCommand::Delete) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Delete);
+					else if (command == ESSE::Windows::WindowCommand::Find) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Find);
+					else if (command == ESSE::Windows::WindowCommand::Replace) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::Replace);
+					else if (command == ESSE::Windows::WindowCommand::SelectAll) return _callback->IsWindowEventEnabled(this, Windows::WindowHandler::SelectAll);
 					else return false;
 				} catch (...) { return false; }
 			}
