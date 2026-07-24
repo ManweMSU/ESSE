@@ -1038,16 +1038,6 @@ namespace ESSE
 			XCursorAPI(void);
 			virtual ~XCursorAPI(void) override;
 		};
-		class XTestAPI : public Object
-		{
-			handle _library;
-		public:
-			DEFINE_FUNCTION_POINTER(XTestQueryExtension, Bool, (Display *, int *, int *, int *, int *))
-			DEFINE_FUNCTION_POINTER(XTestFakeMotionEvent, int, (Display *, int, int, int, unsigned long))
-		public:
-			XTestAPI(void);
-			virtual ~XTestAPI(void) override;
-		};
 
 		extern int LastXError;
 	}

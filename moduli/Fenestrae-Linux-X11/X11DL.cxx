@@ -137,15 +137,5 @@ namespace ESSE
 			} catch (...) { dlclose(_library); throw; }
 		}
 		XCursorAPI::~XCursorAPI(void) { dlclose(_library); }
-		XTestAPI::XTestAPI(void)
-		{
-			_library = dlopen("libXtst.so", RTLD_NOW);
-			if (!_library) throw NotImplementedException();
-			try {
-				DEFINE_FUNCTION_IMPORT(XTestQueryExtension)
-				DEFINE_FUNCTION_IMPORT(XTestFakeMotionEvent)
-			} catch (...) { dlclose(_library); throw; }
-		}
-		XTestAPI::~XTestAPI(void) { dlclose(_library); }
 	}
 }

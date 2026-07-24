@@ -142,7 +142,7 @@ namespace ESSE
 					background = Color(0xFF, 0xFF, 0xFF, 0xC0);
 					background_solid = Color(0xE0, 0xE0, 0xE0);
 				}
-				border = theme->GetColor(Windows::ThemeColor::GrayedText);
+				border = grayed = theme->GetColor(Windows::ThemeColor::GrayedText);
 				normal = theme->GetColor(Windows::ThemeColor::MenuText);
 				hot = theme->GetColor(Windows::ThemeColor::MenuHotText);
 				selection_accent = theme->GetColor(Windows::ThemeColor::MenuHotBackground);

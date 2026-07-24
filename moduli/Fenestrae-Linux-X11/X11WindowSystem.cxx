@@ -1734,7 +1734,6 @@ namespace ESSE
 			oref<XRANDRAPI> _xrandr_api;
 			oref<XRenderAPI> _xrender_api;
 			oref<XCursorAPI> _xcursor_api;
-			oref<XTestAPI> _xtest_api;
 			oref<XServerConnection> _con;
 			oref<XDispatch> _dispatch;
 			oref<DBus::IConnection> _dbus;
@@ -1754,7 +1753,7 @@ namespace ESSE
 			ObjectDictionary<uint, XCursorImage> _cursors;
 			Set<oref<Windows::IWindow>> _root_windows;
 			oref<Picturae::Image> _appicon;
-			bool _first_time_loop, _break_without_windows, _xtest_available;
+			bool _first_time_loop, _break_without_windows;
 			uint32 _modal_level;
 		private:
 			static int _signal_handler(void *) noexcept
@@ -2153,7 +2152,6 @@ namespace ESSE
 				try { _xrandr_api = owrap(new XRANDRAPI); } catch (...) {}
 				try { _xrender_api = owrap(new XRenderAPI); } catch (...) {}
 				try { _xcursor_api = owrap(new XCursorAPI); } catch (...) {}
-				try { _xtest_api = owrap(new XTestAPI); } catch (...) {}
 				_ibus_sync = CreateSemaphore(1);
 				if (!_ibus_sync) throw OutOfMemoryException();
 				sigset_t set;
@@ -2233,11 +2231,6 @@ namespace ESSE
 						_xkb.present = true;
 					} else _xkb.present = false;
 				} else _xkb.present = false;
-				if (_xtest_api) {
-					int a, b, c, d;
-					if (_xtest_api->XTestQueryExtension(_con->GetXDisplay(), &a, &b, &c, &d)) _xtest_available = true;
-					else _xtest_available = false;
-				} else _xtest_available = false;
 				IO::CreatePipe(_ibus_in, _ibus_out);
 				XSetWindowAttributes attr;
 				attr.event_mask = PropertyChangeMask;
@@ -2664,12 +2657,8 @@ namespace ESSE
 			{
 				auto api = _con->GetAPI();
 				auto display = _con->GetXDisplay();
-				if (_xtest_available) {
-					_xtest_api->XTestFakeMotionEvent(display, api->XDefaultScreen(display), position.x, position.y, CurrentTime);
-				} else {
-					auto root = api->XRootWindow(display, api->XDefaultScreen(display));
-					api->XWarpPointer(display, 0, root, 0, 0, 0, 0, position.x, position.y);
-				}
+				auto root = api->XRootWindow(display, api->XDefaultScreen(display));
+				api->XWarpPointer(display, 0, root, 0, 0, 0, 0, position.x, position.y);
 			}
 			virtual oref<Windows::ICursor> LoadCursor(Picturae::Picture * source) noexcept override
 			{
