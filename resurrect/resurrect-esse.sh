@@ -1,6 +1,8 @@
 mkdir resurrect/_obj
 mkdir resurrect/_bin
+echo 'Resurrectorem compilo...'
 cc resurrect/resurrector.c -o resurrect/_bin/resurrector &>> resurrect/_obj/resurrector.log || { echo "Compilatio resurrectoris falsa."; exit 1; }
+echo 'Constructorem resurgo...'
 resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     constructor/ \
     moduli/Auxilia/ \
@@ -35,8 +37,8 @@ resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -N || { echo "C
 ESSE_CONS_EXEC=`resurrect/_bin/esse -R bin/esse.ini esse.ertproj -OSE`
 ESSE_CONV_EXEC=`resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -OSE`
 cp resurrect/esse.loc.ini bin/esse.loc.ini
-cp $ESSE_CONS_EXEC bin/esse
-cp $ESSE_CONV_EXEC bin/esse-converte
+cp "$ESSE_CONS_EXEC" bin/esse
+cp "$ESSE_CONV_EXEC" bin/esse-converte
 mkdir bin/esse.loc
 mkdir bin/esse.conv.loc
 bin/esse-converte lineae constructor/esse.loc.en.txt -Nfo bin bin/esse.loc/en.ecst
