@@ -521,7 +521,7 @@ namespace ESSE
 			virtual void Close(ErrorContext & ectx) noexcept override { if (!_unix) { ErrorSet(ectx, 5, 0); return; } _unix->Close(ectx); }
 		};
 
-		oref<INetworkChannel> CreateNetworkChannelS(NetworkAddress * address) { return new OpenSSLNetworkChannel; }
-		oref<INetworkListener> CreateNetworkListenerS(NetworkAddress * address) { return new OpenSSLNetworkListener; }
+		oref<INetworkChannel> CreateNetworkChannelS(NetworkAddress * address) { return oref<INetworkChannel>::CreateOwned(new OpenSSLNetworkChannel); }
+		oref<INetworkListener> CreateNetworkListenerS(NetworkAddress * address) { return oref<INetworkListener>::CreateOwned(new OpenSSLNetworkListener); }
 	}
 }

@@ -2596,6 +2596,188 @@ namespace ESSE
 			virtual IDevice * GetParentDevice(void) noexcept override { return _parent_device; }
 			virtual IDeviceContext2D * GetParentContext(void) noexcept override { return _parent_context; }
 		};
+		class VKTextureHeapPage : public Object
+		{
+			friend class VKTextureHeap;
+			friend class VKTextureHeapAllocation;
+		private:
+			oref<IBitmap> _surface;
+			oref<IDeviceContext2D> _surface_context;
+			oref<ITexture> _video_surface;
+			uint _width, _height;
+			uint _area_free, _area_allocated, _area_discarded;
+			uint _needs_synchronization, _needs_defragmentation, _exhausted;
+			Rectangle _synchronization_rectangle;
+			uint _allocator_x, _allocator_y, _allocator_line;
+		public:
+			VKTextureHeapPage(void) noexcept {}
+			virtual ~VKTextureHeapPage(void) override {}
+		};
+		class VKTextureHeapAllocation : public Object
+		{
+			friend class VKTextureHeap;
+			friend class VKDeviceContext2D;
+		private:
+			oref<VKTextureHeapPage> _page;
+			oref<ITexture> _surface;
+			uint _x, _y, _width, _height;
+		public:
+			VKTextureHeapAllocation(void) noexcept {}
+			virtual ~VKTextureHeapAllocation(void) override { if (_page) { auto area = _width * _height; _page->_area_allocated -= area; _page->_area_discarded += area; } }
+			bool EndPopulate(IDeviceContext2D * context) noexcept { context->PopClip(); return context->EndRendering(); }
+		};
+		class VKTextureHeap : public Object
+		{
+			List<oref<VKTextureHeapPage>> _pages;
+			List<oref<VKTextureHeapAllocation>> _allocations;
+			oref<Graphica::IDeviceContextFactory2D> _factory;
+			oref<VKQueue> _queue;
+			Graphica::IDevice * _device;
+		public:
+			VKTextureHeap(Graphica::IDeviceContextFactory2D * factory, Graphica::IDevice * device, VKQueue * queue) : _factory(factory), _device(device), _queue(queue) {}
+			virtual ~VKTextureHeap(void) override {}
+			bool AllocateRegion(uint width, uint height, uint default_page_width, uint default_page_height, oref<VKTextureHeapPage> & surface_page, oref<Graphica::ITexture> & surface, Rectangle & rect) noexcept
+			{
+				VKTextureHeapPage * page = 0;
+				for (auto & p : _pages) {
+					if (p->_needs_defragmentation) continue;
+					if (p->_width - p->_allocator_x >= width && p->_height - p->_allocator_y >= height) { page = p.Inner(); break; }
+					if (p->_width >= width && p->_height - p->_allocator_y - p->_allocator_line >= height) { p->_allocator_y += p->_allocator_line; p->_allocator_x = p->_allocator_line = 0; page = p.Inner(); break; }
+					p->_exhausted = 1;
+				}
+				if (!page && default_page_width && default_page_height) {
+					auto new_page = owrap(new (std::nothrow) VKTextureHeapPage);
+					if (!new_page) return false;
+					new_page->_width = max(default_page_width, width);
+					new_page->_height = max(default_page_height, height);
+					if (new_page->_width > 16384 || new_page->_height > 16384) return false;
+					new_page->_area_free = new_page->_width * new_page->_height;
+					new_page->_area_allocated = new_page->_area_discarded = 0;
+					new_page->_needs_synchronization = new_page->_needs_defragmentation = new_page->_exhausted = 0;
+					new_page->_allocator_x = new_page->_allocator_y = new_page->_allocator_line = 0;
+					new_page->_surface = _factory->CreateBitmap(new_page->_width, new_page->_height, 0);
+					if (!new_page->_surface) return false;
+					new_page->_surface_context = _factory->CreateBitmapContext(new_page->_surface);
+					if (!new_page->_surface_context) return false;
+					Graphica::TextureDesc desc;
+					desc.Type = Graphica::TextureType::Type2D;
+					desc.Format = Graphica::PixelFormat::B8G8R8A8_unorm;
+					desc.Width = new_page->_width;
+					desc.Height = new_page->_height;
+					desc.MipmapCount = 1;
+					desc.MemoryPool = Graphica::ResourceMemoryPool::Regular;
+					desc.Usage = Graphica::ResourceUsageCPUWrite | Graphica::ResourceUsageShaderRead;
+					new_page->_video_surface = _device->CreateTexture(desc);
+					if (!new_page->_video_surface) return false;
+					try { _pages.InsertLast(new_page); } catch (...) { return false; }
+					page = new_page;
+				}
+				if (!page) return false;
+				surface_page = page;
+				surface = page->_video_surface;
+				rect.left = page->_allocator_x;
+				rect.top = page->_allocator_y;
+				rect.right = rect.left + width;
+				rect.bottom = rect.top + height;
+				page->_allocator_x += width;
+				page->_allocator_line = max(page->_allocator_line, height);
+				page->_area_allocated += width * height;
+				page->_area_free = (page->_height - page->_allocator_y - page->_allocator_line) * page->_width + (page->_width - page->_allocator_x) * page->_allocator_line;
+				return true;
+			}
+			oref<VKTextureHeapAllocation> Allocate(uint width, uint height, uint default_page_width, uint default_page_height, oref<IDeviceContext2D> & populate, uint & populate_at_x, uint & populate_at_y) noexcept
+			{
+				auto result = owrap(new (std::nothrow) VKTextureHeapAllocation);
+				if (!result) return 0;
+				Rectangle vrect;
+				if (!AllocateRegion(width, height, default_page_width, default_page_height, result->_page, result->_surface, vrect)) return 0;
+				result->_x = vrect.left;
+				result->_y = vrect.top;
+				result->_width = width;
+				result->_height = height;
+				if (result->_page->_needs_synchronization) {
+					result->_page->_synchronization_rectangle = Rectangle::OuterRectangle(result->_page->_synchronization_rectangle, vrect);
+				} else {
+					result->_page->_needs_synchronization = 1;
+					result->_page->_synchronization_rectangle = vrect;
+				}
+				try { _allocations.InsertLast(result); } catch (...) { return 0; }
+				populate_at_x = vrect.left;
+				populate_at_y = vrect.top;
+				populate = result->_page->_surface_context;
+				populate->BeginRendering(Graphica::TextureLoadAction::Load, 0);
+				populate->PushClip(vrect);
+				return result;
+			}
+			bool SynchronizeIfNeeded(void) noexcept
+			{
+				VkCommandBuffer buffer = 0;
+				for (auto & p : _pages) if (p->_needs_synchronization) {
+					if (!buffer) {
+						buffer = _queue->BeginPrivatePass();
+						if (!buffer) return false;
+					}
+					auto & desc = static_cast<Cairo::CairoBitmap *>(p->_surface.Inner())->GetData()->GetDesc();
+					Graphica::ResourceInitDesc data;
+					data.Data = reinterpret_cast<const uint8 *>(desc.data) + desc.stride * p->_synchronization_rectangle.top + 4 * p->_synchronization_rectangle.left;
+					data.DataPitch = desc.stride;
+					if (!_queue->InternalUpdateResourceData(buffer, p->_video_surface, Index2(0, 0), Index3(p->_synchronization_rectangle.left, p->_synchronization_rectangle.top, 0),
+						Index3(p->_synchronization_rectangle.right - p->_synchronization_rectangle.left, p->_synchronization_rectangle.bottom - p->_synchronization_rectangle.top, 1), data)) return false;
+					p->_needs_synchronization = 0;
+				}
+				return buffer ? _queue->EndPrivatePass(buffer) : true;
+			}
+			bool DefragmentIfNeeded(VKPass * pass) noexcept
+			{
+				bool defragment = false;
+				auto current_alloc = _allocations.GetFirst();
+				while (current_alloc) {
+					auto next = current_alloc->GetNext();
+					if (current_alloc->GetValue()->GetReferenceCount() == 1) _allocations.Remove(current_alloc);
+					current_alloc = next;
+				}
+				for (auto & p : _pages) if (p->_exhausted && (p->_area_allocated << 1U) < p->_area_discarded) { p->_needs_defragmentation = 1; if (p->_area_allocated) defragment = true; }
+				// TODO: DEBUG AND ACTIVATE
+				// if (defragment) {
+				// 	current_alloc = _allocations.GetFirst();
+				// 	while (current_alloc) {
+				// 		auto & a = current_alloc->GetValue();
+				// 		if (a->_page->_needs_defragmentation) {
+				// 			oref<VKTextureHeapPage> page;
+				// 			oref<Graphica::ITexture> surface;
+				// 			Rectangle rect;
+				// 			if (AllocateRegion(a->_width, a->_height, a->_page->_width, a->_page->_height, page, surface, rect)) {
+				// 				pass->CopySubresourceData(surface, Index2(0, 0), Index3(rect.left, rect.top, 0), a->_surface, Index2(0, 0), Index3(a->_x, a->_y, 0), Index3(a->_width, a->_height, 1));
+				// 				auto & dest = static_cast<Cairo::CairoBitmap *>(page->_surface.Inner())->GetData()->GetDesc();
+				// 				auto & src = static_cast<Cairo::CairoBitmap *>(a->_page->_surface.Inner())->GetData()->GetDesc();
+				// 				uint scan = 4 * a->_width;
+				// 				for (uint y = 0; y < a->_height; y++) Memory::MemoryCopy(
+				// 					reinterpret_cast<uint8 *>(dest.data) + (rect.top + y) * dest.stride + 4 * rect.left,
+				// 					reinterpret_cast<const uint8 *>(src.data) + (a->_y + y) * src.stride + 4 * a->_x, scan);
+				// 				// if (page->_needs_synchronization) {
+				// 				// 	page->_synchronization_rectangle = Rectangle::OuterRectangle(page->_synchronization_rectangle, rect);
+				// 				// } else {
+				// 				// 	page->_needs_synchronization = 1;
+				// 				// 	page->_synchronization_rectangle = rect;
+				// 				// }
+				// 				a->_x = rect.left;
+				// 				a->_y = rect.top;
+				// 				a->_page = page;
+				// 				a->_surface = surface;
+				// 			}
+				// 		}
+				// 		current_alloc = current_alloc->GetNext();
+				// 	}
+				// }
+				auto current_page = _pages.GetFirst();
+				while (current_page) {
+					auto next = current_page->GetNext();
+					if (current_page->GetValue()->GetReferenceCount() == 1) _pages.Remove(current_page);
+					current_page = next;
+				}
+				return true;
+			}
+		};
 		class VKGlyphRun : public IGlyphRun
 		{
 			friend class VKDeviceContext2D;
@@ -2603,9 +2785,8 @@ namespace ESSE
 			IDevice * _parent_device;
 			IDeviceContext2D * _parent_context;
 			oref<IGlyphRun> _inner;
-			oref<IBitmap> _surface;
-			oref<IDeviceContext2D> _surface_context;
-			oref<IBitmapBrush> _surface_brush;
+			uint _width, _height;
+			oref<VKTextureHeapAllocation> _surface;
 			Rectangle _aabb, _current_view;
 		public:
 			VKGlyphRun(IDevice * parent_device, IDeviceContext2D * parent_context) : _parent_device(parent_device), _parent_context(parent_context) {}
@@ -2722,6 +2903,7 @@ namespace ESSE
 			oref<ITexture> _main_destination, _current_destination, _blur_backstage;
 			oref<VKSmallSelectorBuffer> _selectors;
 			oref<IDeviceContext2D> _measure_context;
+			oref<VKTextureHeap> _heap;
 		private:
 			void _finalize(void) noexcept
 			{
@@ -2895,7 +3077,7 @@ namespace ESSE
 				}
 				oref<VKDescriptorPool> new_pool;
 				try {
-					new_pool = new VKDescriptorPool(_current_pass->layout);
+					new_pool = owrap(new VKDescriptorPool(_current_pass->layout));
 					if (!new_pool->Initialize()) return;
 					_current_pass->_allocation_pools.Append(new_pool);
 				} catch (...) { return; }
@@ -2907,30 +3089,35 @@ namespace ESSE
 					_selectors->set = set_created;
 				}
 			}
-			void _update_selector(uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
+			bool _update_selector(uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
 			{
-				if (!_selectors) return;
+				if (!_selectors) return false;
 				if (!_selectors->set) _reinitialize_selectors();
-				if (!_selectors->set) return;
+				if (!_selectors->set) return false;
 				if (index == 0) {
 					_selectors->constant_global.SetRetain(static_cast<VKBuffer *>(object));
 					_selectors->constant_global_range.offset = origin;
 					_selectors->constant_global_range.range = size;
 					_selectors->constant_global_range.buffer = 0;
+					return true;
 				} else if (index == 1) {
 					_selectors->constant_local.SetRetain(static_cast<VKBuffer *>(object));
 					_selectors->constant_local_range.offset = origin;
 					_selectors->constant_local_range.range = size;
 					_selectors->constant_local_range.buffer = 0;
+					return true;
 				} else if (index == 2) {
 					_selectors->vertex.SetRetain(static_cast<VKBuffer *>(object));
+					return true;
 				} else if (index == 3) {
 					_selectors->surface.SetRetain(static_cast<VKTexture *>(object));
+					return true;
 				} else if (index == 5) {
 					_selectors->mask.SetRetain(static_cast<VKTexture *>(object));
-				} else return;
+					return true;
+				} else return false;
 			}
-			void _update_selector_constant(uint index, const void * data, int length) noexcept
+			bool _update_selector_constant(uint index, const void * data, int length) noexcept
 			{
 				uint align = length;
 				if (align & (_current_pass->layout->constant_alignment - 1)) { align &= ~(_current_pass->layout->constant_alignment - 1); align += _current_pass->layout->constant_alignment; }
@@ -2945,17 +3132,18 @@ namespace ESSE
 					range.size = align;
 					auto api = _queue->GetAPI();
 					api->Dispatch.vkFlushMappedMemoryRanges(api->Device, 1, &range);
-					_update_selector(index, _current_pass->constant_pool, origin, align);
-				}
+					return _update_selector(index, _current_pass->constant_pool, origin, align);
+				} else return false;
 			}
-			void _commit_selectors(void) noexcept
+			bool _commit_selectors(void) noexcept
 			{
-				if (!_selectors || !_selectors->set) return;
+				if (!_selectors || !_selectors->set) return false;
 				for (int i = 0; i <= 5; i++) _push_selector(i);
-				try { _current_pass->retain.AddElement(_selectors.Inner()); } catch (...) { return; }
+				try { _current_pass->retain.AddElement(_selectors.Inner()); } catch (...) { return false; }
 				auto api = _queue->GetAPI();
 				api->Dispatch.vkCmdBindDescriptorSets(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _current_pass->layout->pipeline_layout, 0, 1, &_selectors->set, 0, 0);
-				_selectors = new (std::nothrow) VKSmallSelectorBuffer(*_selectors);
+				_selectors = owrap(new (std::nothrow) VKSmallSelectorBuffer(*_selectors));
+				return true;
 			}
 			bool _resume_rendering(TextureLoadAction load, const float * clear_color) noexcept
 			{
@@ -3429,12 +3617,8 @@ namespace ESSE
 				}
 				if (undefined) return 0;
 				result->_aabb = Rectangle(floor(bl), floor(bt), ceil(br), ceil(bb));
-				uint sx = min<int>(result->_aabb.right - result->_aabb.left, 16384);
-				uint sy = min<int>(result->_aabb.bottom - result->_aabb.top, 16384);
-				result->_surface = _parent_factory->CreateBitmap(sx, sy, 0);
-				if (!result->_surface) return 0;
-				result->_surface_context = _parent_factory->CreateBitmapContext(result->_surface);
-				if (!result->_surface_context) return 0;
+				result->_width = min<int>(result->_aabb.right - result->_aabb.left, 16384);
+				result->_height = min<int>(result->_aabb.bottom - result->_aabb.top, 16384);
 				return oref<IGlyphRun>(result);
 			}
 			virtual void PushClip(const Rectangle & rect) noexcept override
@@ -3498,18 +3682,20 @@ namespace ESSE
 						draw.dv = l->_position.bottom - l->_position.top;
 						draw.index = 0;
 						draw.alpha = l->_blend_alpha;
-						_update_selector_constant(1, &draw, sizeof(draw));
-						_update_selector(2, _common->area);
-						_update_selector(3, l->_surface);
-						if (mode == 3) _update_selector(5, l->_surface_mask);
-						_commit_selectors();
+						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+						if (!_update_selector(2, _common->area)) return;
+						if (!_update_selector(3, l->_surface)) return;
+						if (mode == 3) if (!_update_selector(5, l->_surface_mask)) return;
+						if (!_commit_selectors()) return;
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 					}
 				}
 			}
 			virtual void Render(IBrush * brush, const Rectangle & at) noexcept override
 			{
-				if (!_current_pass || !brush || at.left >= at.right || at.top >= at.bottom) return;
+				if (!_current_pass || !brush) return;
+				auto vrect = Rectangle::Intersect(_clipboxes.GetLast()->GetValue(), at);
+				if (vrect.left >= vrect.right || vrect.top >= vrect.bottom) return;
 				auto api = _queue->GetAPI();
 				auto type = brush->GetBrushType();
 				if (type == BrushType::Color) {
@@ -3544,10 +3730,10 @@ namespace ESSE
 						grad.side_y = sy;
 						grad.extent_x = max(xmx, xmn) + 0.01f;
 						grad.extent_y = max(ymx, ymn) + 0.01f;
-						_update_selector_constant(1, &grad, sizeof(grad));
-						_update_selector(2, b->_area);
-						_update_selector(3, _common->white);
-						_commit_selectors();
+						if (!_update_selector_constant(1, &grad, sizeof(grad))) { PopClip(); return; }
+						if (!_update_selector(2, b->_area)) { PopClip(); return; }
+						if (!_update_selector(3, _common->white)) { PopClip(); return; }
+						if (!_commit_selectors()) { PopClip(); return; }
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 						PopClip();
 					} else {
@@ -3559,10 +3745,10 @@ namespace ESSE
 						draw.bottom = at.bottom;
 						draw.du = draw.dv = draw.index = 0;
 						draw.alpha = 1.0f;
-						_update_selector_constant(1, &draw, sizeof(draw));
-						_update_selector(2, b->_area);
-						_update_selector(3, _common->white);
-						_commit_selectors();
+						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+						if (!_update_selector(2, b->_area)) return;
+						if (!_update_selector(3, _common->white)) return;
+						if (!_commit_selectors()) return;
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 					}
 				} else if (type == BrushType::Bitmap) {
@@ -3573,7 +3759,7 @@ namespace ESSE
 						draw.at = at;
 						draw.tref = b->_tile_ref_box;
 						draw.irect = b->_tile_image_box;
-						_update_selector_constant(1, &draw, sizeof(draw));
+						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
 					} else {
 						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, b->_alpha ? static_cast<VKPipelineState *>(_common->main_alpha_state.Inner())->_pipeline : static_cast<VKPipelineState *>(_common->main_opaque_state.Inner())->_pipeline);
 						VKDrawDesc draw;
@@ -3585,11 +3771,11 @@ namespace ESSE
 						draw.dv = 1;
 						draw.index = 0;
 						draw.alpha = 1.0f;
-						_update_selector_constant(1, &draw, sizeof(draw));
+						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
 					}
-					_update_selector(2, b->_area);
-					_update_selector(3, b->_surface);
-					_commit_selectors();
+					if (!_update_selector(2, b->_area)) return;
+					if (!_update_selector(3, b->_surface)) return;
+					if (!_commit_selectors()) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 				} else if (type == BrushType::Blur) {
 					auto b = static_cast<VKBlurEffectBrush *>(brush);
@@ -3729,10 +3915,10 @@ namespace ESSE
 					draw.dv = mip_size.y;
 					draw.index = effective_lod;
 					draw.alpha = effective_sigma;
-					_update_selector_constant(1, &draw, sizeof(draw));
-					_update_selector(2, _common->area);
-					_update_selector(3, _blur_backstage);
-					_commit_selectors();
+					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+					if (!_update_selector(2, _common->area)) return;
+					if (!_update_selector(3, _blur_backstage)) return;
+					if (!_commit_selectors()) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 				} else if (type == BrushType::Inversion) {
 					api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->invert_state.Inner())->_pipeline);
@@ -3743,10 +3929,10 @@ namespace ESSE
 					draw.bottom = at.bottom;
 					draw.du = draw.dv = draw.index = 0;
 					draw.alpha = 1.0f;
-					_update_selector_constant(1, &draw, sizeof(draw));
-					_update_selector(2, _common->area);
-					_update_selector(3, _common->white);
-					_commit_selectors();
+					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+					if (!_update_selector(2, _common->area)) return;
+					if (!_update_selector(3, _common->white)) return;
+					if (!_commit_selectors()) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 				}
 			}
@@ -3808,20 +3994,36 @@ namespace ESSE
 				auto r = static_cast<VKGlyphRun *>(run);
 				auto & clipping = _clipboxes.GetLast()->GetValue();
 				auto new_view = Rectangle::Intersect(Rectangle(clipping.left - at.x, clipping.top - at.y, clipping.right - at.x, clipping.bottom - at.y), r->_aabb);
-				if (!r->_surface_brush || Rectangle::Intersect(new_view, r->_current_view) != new_view) {
-					if (new_view.right - new_view.left <= r->_surface->GetWidth()) r->_current_view.left = r->_aabb.left;
+				if (!r->_surface || Rectangle::Intersect(new_view, r->_current_view) != new_view) {
+					if (new_view.right - new_view.left <= r->_width) r->_current_view.left = r->_aabb.left;
 					else r->_current_view.left = new_view.left;
-					if (new_view.bottom - new_view.top <= r->_surface->GetHeight()) r->_current_view.top = r->_aabb.top;
+					if (new_view.bottom - new_view.top <= r->_height) r->_current_view.top = r->_aabb.top;
 					else r->_current_view.top = new_view.top;
-					r->_current_view.right = r->_current_view.left + r->_surface->GetWidth();
-					r->_current_view.bottom = r->_current_view.top + r->_surface->GetHeight();
-					if (!r->_surface_context->BeginRendering(TextureLoadAction::Clear, 0)) return;
-					r->_surface_context->RenderGlyphRun(r->_inner, Index2(-r->_current_view.left, -r->_current_view.top));
-					if (!r->_surface_context->EndRendering()) return;
-					r->_surface_brush = CreateBitmapBrush(r->_surface, Rectangle(0, 0, r->_surface->GetWidth(), r->_surface->GetHeight()));
-					if (!r->_surface_brush) return;
+					r->_current_view.right = r->_current_view.left + r->_width;
+					r->_current_view.bottom = r->_current_view.top + r->_height;
+					if (!_heap) {
+						_heap = owrap(new (std::nothrow) VKTextureHeap(_parent_factory, _parent_device, _queue));
+						if (!_heap) return;
+					}
+					oref<Graphica::IDeviceContext2D> subctx;
+					uint x, y;
+					r->_surface = _heap->Allocate(r->_width, r->_height, _main_destination->GetWidth(), _main_destination->GetHeight(), subctx, x, y);
+					if (!r->_surface) return;
+					subctx->RenderGlyphRun(r->_inner, Index2(x - r->_current_view.left, y - r->_current_view.top));
+					r->_surface->EndPopulate(subctx);
 				}
-				Render(r->_surface_brush, Rectangle(r->_current_view.left + at.x, r->_current_view.top + at.y, r->_current_view.right + at.x, r->_current_view.bottom + at.y));
+				if (r->_surface && new_view.right > new_view.left && new_view.bottom > new_view.top) {
+					auto api = _queue->GetAPI();
+					api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->tile_state.Inner())->_pipeline);
+					VKTileDesc draw;
+					draw.at = draw.tref = Rectangle(r->_current_view.left + at.x, r->_current_view.top + at.y, r->_current_view.right + at.x, r->_current_view.bottom + at.y);
+					draw.irect = Rectangle(r->_surface->_x, r->_surface->_y, r->_surface->_x + r->_surface->_width, r->_surface->_y + r->_surface->_height);
+					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+					if (!_update_selector(2, _common->area)) return;
+					if (!_update_selector(3, r->_surface->_surface)) return;
+					if (!_commit_selectors()) return;
+					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
+				}
 			}
 			virtual bool BeginRendering(TextureLoadAction load, const Color & clear_color) noexcept override { return false; }
 			virtual bool EndRendering(void) noexcept override { return false; }
@@ -3833,12 +4035,13 @@ namespace ESSE
 				viewport.offset_x = 0; viewport.offset_y = 0;
 				viewport.width = rtv.Texture->GetWidth(); viewport.height = rtv.Texture->GetHeight();
 				try {
-					_selectors = new VKSmallSelectorBuffer;
+					_selectors = owrap(new VKSmallSelectorBuffer);
 					_clipboxes.Clear();
 					_clipboxes.Push(Rectangle(0, 0, rtv.Texture->GetWidth(), rtv.Texture->GetHeight()));
 					_viewports.Clear();
 					_viewports.Push(viewport);
 				} catch (...) { return false; }
+				if (_heap) _heap->DefragmentIfNeeded(_current_pass);
 				if (!_resume_rendering(rtv.LoadAction, rtv.ClearValue)) {
 					_current_pass = 0;
 					_current_destination.Clear();
@@ -3854,6 +4057,7 @@ namespace ESSE
 				_current_destination.Clear();
 				_main_destination.Clear();
 				_current_pass = 0;
+				if (_heap) _heap->SynchronizeIfNeeded();
 				return true;
 			}
 		};
@@ -5381,7 +5585,7 @@ namespace ESSE
 				if (desc.Usage & (ResourceUsageShaderAll | ResourceUsageRenderTarget | ResourceUsageDepthStencil)) {
 					if (!_texture_init_views(result, true, 0, 0)) return 0;
 				}
-				if (create_shared_io && !import) try { result->_shared = new VKSharedObject(_api, result, _physical, result->_memory, memreq.size); } catch (...) { return 0; }
+				if (create_shared_io && !import) try { result->_shared = owrap(new VKSharedObject(_api, result, _physical, result->_memory, memreq.size)); } catch (...) { return 0; }
 				return result;
 			}
 		public:

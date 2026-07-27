@@ -11,7 +11,25 @@ namespace esse {
 			string name, locale, id;
 			SafePointer<DataBlock> data;
 		};
-		void write_hexadecimal(DynamicString & dest, const DataBlock & data) { for (auto & b : data) dest << L"0x" << HexadecimalBase[b >> 4] << HexadecimalBase[b & 15] << L","; }
+		struct dynamic_string_writer
+		{
+			Array<char> buffer;
+			dynamic_string_writer(void) : buffer(0x100000) {}
+			DataBlock * finalize(void)
+			{
+				SafePointer<DataBlock> result = new DataBlock(1);
+				result->SetLength(buffer.Length());
+				MemoryCopy(result->GetBuffer(), buffer.GetBuffer(), buffer.Length());
+				result->Retain();
+				return result;
+			}
+			friend dynamic_string_writer & operator << (dynamic_string_writer & wri, const wchar_t * input) { uint i = 0; while (input[i]) wri << input[i++]; return wri; }
+			friend dynamic_string_writer & operator << (dynamic_string_writer & wri, wchar_t input) { wri.buffer.Append(char(input)); return wri; }
+			friend dynamic_string_writer & operator << (dynamic_string_writer & wri, const char32_t * input) { uint i = 0; while (input[i]) wri << input[i++]; return wri; }
+			friend dynamic_string_writer & operator << (dynamic_string_writer & wri, char32_t input) { wri.buffer.Append(char(input)); return wri; }
+		};
+		
+		void write_hexadecimal(dynamic_string_writer & dest, const DataBlock & data) { for (auto & b : data) dest << L"0x" << HexadecimalBase[b >> 4] << HexadecimalBase[b & 15] << L","; }
 
 		resource_tool::resource_tool(Engine::Storage::RegistryNode * node)
 		{
@@ -113,7 +131,7 @@ namespace esse {
 								return;
 							}
 						}
-						DynamicString resfile(0x10000);
+						dynamic_string_writer resfile;
 						string resfile_path = ExpandPath(state->project_object_path + L"/auxilia-projecti.cxx");
 						resfile << L"namespace ESSE {";
 						for (auto & rr : resource_table) {
@@ -139,7 +157,7 @@ namespace esse {
 						resfile << L"};";
 						resfile << L"unsigned int * __reslengths = __reslengthsA;";
 						resfile << L"}";
-						SafePointer<DataBlock> resfile_data_new = resfile.ToString().EncodeSequence(Encoding::UTF8, false);
+						SafePointer<DataBlock> resfile_data_new = resfile.finalize();
 						auto resfile_data_update = true;
 						if (FileExists(resfile_path)) try {
 							FileStream stream(resfile_path, AccessRead, OpenExisting);

@@ -269,12 +269,12 @@ namespace ESSE
 			try {
 				auto system_time_unit = sysconf(_SC_CLK_TCK);
 				auto proc_stat_stream = FileStream::Create(U"/proc/" + string(pid) + U"/stat", FileAccess::AccessRead, FileCreationMode::OpenExisting);
-				auto proc_stat_decoder = new TextDecoder(proc_stat_stream, Unicode::Encoding::UTF8);
+				auto proc_stat_decoder = owrap(new TextDecoder(proc_stat_stream, Unicode::Encoding::UTF8));
 				auto word = SplitString(proc_stat_decoder->ReadAll(), U' ');
 				long time_started = word.GetLength() > 21 ? word[21].ToUInt64() : 0;
 				long os_time_started = 0;
 				proc_stat_stream = FileStream::Create(U"/proc/stat", FileAccess::AccessRead, FileCreationMode::OpenExisting);
-				proc_stat_decoder = new TextDecoder(proc_stat_stream, Unicode::Encoding::UTF8);
+				proc_stat_decoder = owrap(new TextDecoder(proc_stat_stream, Unicode::Encoding::UTF8));
 				while (!proc_stat_decoder->IsEOF()) {
 					auto line = proc_stat_decoder->ReadLine();
 					if (line.Substring(0, 6) == U"btime ") {

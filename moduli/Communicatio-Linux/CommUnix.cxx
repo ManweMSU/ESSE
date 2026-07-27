@@ -540,7 +540,7 @@ namespace ESSE
 					NetworkRequest req;
 					req.in.attributes = REQUEST_ATTRIBUTE_CONNECT;
 					req.in.length = req.in.pointer = 0;
-					req.in.data = new DataBlock(1);
+					req.in.data = owrap(new DataBlock(1));
 					req.out.handler.SetRetain(hdlr);
 					req.out.status = error;
 					req.out.length = 0;
@@ -762,7 +762,7 @@ namespace ESSE
 				oref<NetworkRequestQueue> queue;
 				try { queue = owrap(new NetworkRequestQueue(con.in_socket)); } catch (...) { close(con.in_socket); throw; }
 				try {
-					con.out_channel = new UnixNetworkChannel(queue);
+					con.out_channel = oref<INetworkChannel>::CreateOwned(new UnixNetworkChannel(queue));
 					SocketAddressRead(con.in_address, &con.out_address);
 				} catch (...) {
 					con.out_channel.Clear();
@@ -774,8 +774,8 @@ namespace ESSE
 
 		void NetworkEngineInit(void) { NetworkRequestQueue::CreateDispatch(); }
 		void NetworkEngineStop(void) noexcept { NetworkRequestQueue::StopDispatch(); }
-		oref<INetworkChannel> CreateNetworkChannel(NetworkAddress * address) { return new UnixNetworkChannel; }
-		oref<INetworkListener> CreateNetworkListener(NetworkAddress * address) { return new UnixNetworkListener; }
+		oref<INetworkChannel> CreateNetworkChannel(NetworkAddress * address) { return oref<INetworkChannel>::CreateOwned(new UnixNetworkChannel); }
+		oref<INetworkListener> CreateNetworkListener(NetworkAddress * address) { return oref<INetworkListener>::CreateOwned(new UnixNetworkListener); }
 		oref<object_array<NetworkAddress>> GetNetworkDomainAddresses(const string & domain_name, uint16 port, NetworkAddressDomain address_domain, ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO

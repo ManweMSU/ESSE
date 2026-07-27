@@ -344,7 +344,7 @@ namespace ESSE
 			oref<DBusAPI> api;
 			Memory::AcquireRootLock();
 			try {
-				if (!_common_api) _common_api = new DBusAPI;
+				if (!_common_api) _common_api = owrap(new DBusAPI);
 				api = _common_api;
 			} catch (...) { Memory::ReleaseRootLock(); throw; }
 			Memory::ReleaseRootLock();
@@ -362,7 +362,7 @@ namespace ESSE
 			Memory::AcquireRootLock();
 			try {
 				if (!*storage) {
-					if (!_common_api) _common_api = new DBusAPI;
+					if (!_common_api) _common_api = owrap(new DBusAPI);
 					*storage = oref<IConnection>::CreateOwned(new Connection(_common_api, bus));
 				}
 				result = *storage;

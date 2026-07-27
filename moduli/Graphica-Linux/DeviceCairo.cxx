@@ -578,6 +578,9 @@ namespace ESSE
 				color_prem.a = clear_color.a;
 				for (uint y = 0; y < data.height; y++) for (uint x = 0; x < data.width; x++) Picturae::SetPixel(data, x, y, color_prem.value);
 				_api->cairo_surface_mark_dirty(dest->GetSurface());
+			} else if (load == Graphica::TextureLoadAction::Load) {
+				auto dest = static_cast<CairoBitmap *>(_bitmap.Inner());
+				_api->cairo_surface_mark_dirty(dest->GetSurface());
 			}
 			_state = true;
 			return true;
