@@ -762,6 +762,10 @@ namespace ESSE
 			Pixmap icon_mask;
 			XID window_group;
 		} XWMHints;
+		typedef struct {
+			const char * res_name;
+			const char * res_class;
+		} XClassHint;
 		typedef struct _XkbStateRec {
 			unsigned char group;
 			unsigned char locked_group;
@@ -992,6 +996,7 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(XQueryTree, Status, (Display *, Window, Window *, Window *, Window **, unsigned int *))
 			DEFINE_FUNCTION_POINTER(XGetVisualInfo, XVisualInfo *, (Display *, long, XVisualInfo *, int *))
 			DEFINE_FUNCTION_POINTER(XSelectInput, int, (Display *, Window, long))
+			DEFINE_FUNCTION_POINTER(XSetClassHint, int, (Display *, Window, XClassHint *))
 			DEFINE_FUNCTION_POINTER(XkbLibraryVersion, Bool, (int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbQueryExtension, Bool, (Display *, int *, int *, int *, int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbGetMap, XkbDescPtr, (Display *, unsigned int, unsigned int))

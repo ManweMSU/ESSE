@@ -65,55 +65,86 @@ namespace ESSE
 		Picturae::Picture * CairoBitmap::GetData(void) const noexcept { return _data; }
 		cairo_surface_t CairoBitmap::GetSurface(void) const noexcept { return _surface; }
 
-		CairoFont::CairoFont(Graphica::IDeviceContextFactory2D * parent, CairoAPI * capi, FreeTypeAPI * tapi, FT_Face ff, uint height) : _parent_factory(parent), _capi(capi), _tapi(tapi), _font_face(ff), _height(height)
+		CairoFont::CairoFontSources::CairoFontSources(void) noexcept : font_face(0) {}
+		CairoFont::CairoFontSources::~CairoFontSources(void) { if (tapi && font_face) tapi->FT_Done_Face(font_face); }
+		void CairoFont::CairoFontSourcesDestroy(void * sources) noexcept { reinterpret_cast<CairoFontSources *>(sources)->Release(); }
+		CairoFont::CairoFont(Graphica::IDeviceContextFactory2D * parent, CairoAPI * capi, FreeTypeAPI * tapi, FT_Face ff, uint height) : _parent_factory(parent), _height(height)
 		{
-			if (_tapi->FT_Select_Charmap(_font_face, FT_ENCODING_UNICODE)) throw InvalidStateException();
-			if (_font_face->face_flags & FT_FACE_FLAG_SCALABLE) {
-				_scale_factor = double(_font_face->units_per_EM) / double(_font_face->ascender - _font_face->descender);
+			_sources = owrap(new (std::nothrow) CairoFontSources);
+			if (!_sources) throw OutOfMemoryException();
+			_sources->capi = capi;
+			_sources->tapi = tapi;
+			if (_sources->tapi->FT_Select_Charmap(ff, FT_ENCODING_UNICODE)) throw InvalidStateException();
+			if (ff->face_flags & FT_FACE_FLAG_SCALABLE) {
+				_scale_factor = double(ff->units_per_EM) / double(ff->ascender - ff->descender);
 			} else {
 				int match = -1;
 				uint dh = 0;
-				for (int i = 0; i < _font_face->num_fixed_sizes; i++) {
-					auto & size = _font_face->available_sizes[i];
+				for (int i = 0; i < ff->num_fixed_sizes; i++) {
+					auto & size = ff->available_sizes[i];
 					auto local_dh = uint(abs(int(size.height) - int(_height)));
 					if (local_dh < dh || match < 0) { dh = local_dh; match = i; }
 				}
 				if (match < 0) throw InvalidFormatException();
-				if (_tapi->FT_Select_Size(_font_face, match)) throw InvalidStateException();
-				auto & size = _font_face->size->metrics;
+				if (_sources->tapi->FT_Select_Size(ff, match)) throw InvalidStateException();
+				auto & size = ff->size->metrics;
 				_scale_factor = double(size.height) / double(size.ascender - size.descender);
 			}
-			_font = _capi->cairo_ft_font_face_create_for_ft_face(_font_face, 0);
-			if (_capi->cairo_font_face_status(_font) != CAIRO_STATUS_SUCCESS) {
-				_capi->cairo_font_face_destroy(_font);
+			_font = _sources->capi->cairo_ft_font_face_create_for_ft_face(ff, 0);
+			if (_sources->capi->cairo_font_face_status(_font) != CAIRO_STATUS_SUCCESS) {
+				_sources->capi->cairo_font_face_destroy(_font);
+				throw OutOfMemoryException();
+			}
+			if (_sources->capi->cairo_font_face_set_user_data(_font, this, _sources.Inner(), CairoFontSourcesDestroy) != CAIRO_STATUS_SUCCESS) {
+				_sources->capi->cairo_font_face_destroy(_font);
+				throw OutOfMemoryException();
+			} else _sources->Retain();
+			auto opt = _sources->capi->cairo_font_options_create();
+			if (_sources->capi->cairo_font_options_status(opt) != CAIRO_STATUS_SUCCESS) {
+				_sources->capi->cairo_font_options_destroy(opt);
+				_sources->capi->cairo_font_face_destroy(_font);
+				throw OutOfMemoryException();
+			}
+			cairo_matrix_t scale, identity;
+			_sources->capi->cairo_matrix_init_scale(scale, GetCairoHeight() * GetCairoFontScale(), GetCairoHeight() * GetCairoFontScale());
+			_sources->capi->cairo_matrix_init_identity(identity);
+			_default = _sources->capi->cairo_scaled_font_create(_font, scale, identity, opt);
+			_sources->capi->cairo_font_options_destroy(opt);
+			if (_sources->capi->cairo_scaled_font_status(_default) != CAIRO_STATUS_SUCCESS) {
+				_sources->capi->cairo_scaled_font_destroy(_default);
+				_sources->capi->cairo_font_face_destroy(_font);
 				throw OutOfMemoryException();
 			}
 			_emulated_style = 0;
+			_sources->font_face = ff;
 		}
-		CairoFont::~CairoFont(void) { _capi->cairo_font_face_destroy(_font); _tapi->FT_Done_Face(_font_face); }
+		CairoFont::~CairoFont(void) { _sources->capi->cairo_scaled_font_destroy(_default); _sources->capi->cairo_font_face_destroy(_font); }
 		string CairoFont::ToStringE(ErrorContext & ectx) const noexcept { ESSE_TRY_INTRO return U"Cairo font"; ESSE_TRY_OUTRO(string()) }
-		string CairoFont::GetFontFace(void) noexcept { try { return _font_face->family_name; } catch (...) { return string(); } }
+		string CairoFont::GetFontFace(void) noexcept { try { return _sources->font_face->family_name; } catch (...) { return string(); } }
 		uint CairoFont::GetFontStyle(void) noexcept
 		{
+			auto ff = _sources->capi->cairo_ft_scaled_font_lock_face(_default);
 			uint style = 0;
-			if (_font_face->style_flags & FT_STYLE_FLAG_BOLD) style |= Graphica::CreateFontWeight700;
+			if (ff->style_flags & FT_STYLE_FLAG_BOLD) style |= Graphica::CreateFontWeight700;
 			else style |= Graphica::CreateFontWeight400;
-			if (_font_face->style_flags & FT_STYLE_FLAG_ITALIC) style |= Graphica::CreateFontItalic;
+			if (ff->style_flags & FT_STYLE_FLAG_ITALIC) style |= Graphica::CreateFontItalic;
+			_sources->capi->cairo_ft_scaled_font_unlock_face(_default);
 			return style | _emulated_style;
 		}
 		uint CairoFont::GetHeight(void) noexcept { return _height; }
 		void CairoFont::GetFontMetrics(Graphica::FontMetrics & metrics) noexcept
 		{
-			if (_font_face->face_flags & FT_FACE_FLAG_SCALABLE) {
-				auto scale = double(_height) * _scale_factor / _font_face->units_per_EM;
-				metrics.Ascent = _font_face->ascender * scale;
-				metrics.Descent = _font_face->descender * scale;
-				metrics.LineSpacing = (_font_face->height - _font_face->ascender + _font_face->descender) * scale;
-				metrics.UnderlinePosition = _font_face->underline_position * scale;
-				metrics.UnderlineWidth = metrics.StrikeoutWidth = _font_face->underline_thickness * scale;
-				metrics.StrikeoutPosition = ((_font_face->ascender + _font_face->descender) / 2.0) * scale;
+			auto ff = _sources->capi->cairo_ft_scaled_font_lock_face(_default);
+			if (ff->face_flags & FT_FACE_FLAG_SCALABLE) {
+				auto scale = double(_height) * _scale_factor / ff->units_per_EM;
+				metrics.Ascent = ff->ascender * scale;
+				metrics.Descent = ff->descender * scale;
+				metrics.LineSpacing = (ff->height - ff->ascender + ff->descender) * scale;
+				metrics.UnderlinePosition = ff->underline_position * scale;
+				metrics.UnderlineWidth = metrics.StrikeoutWidth = ff->underline_thickness * scale;
+				metrics.StrikeoutPosition = ((ff->ascender + ff->descender) / 2.0) * scale;
 			} else {
-				auto & m = _font_face->size->metrics;
+				auto & m = ff->size->metrics;
 				auto scale = double(_height) * _scale_factor / m.height;
 				metrics.Ascent = m.ascender * scale;
 				metrics.Descent = m.descender * scale;
@@ -122,16 +153,18 @@ namespace ESSE
 				metrics.UnderlineWidth = metrics.StrikeoutWidth = max(double(_height) / 20.0, 1.0);
 				metrics.StrikeoutPosition = (metrics.Ascent + metrics.Descent) / 2.0;
 			}
+			_sources->capi->cairo_ft_scaled_font_unlock_face(_default);
 		}
 		void CairoFont::GetGlyphMetrics(const uint * glyph, Graphica::FontGlyphMetrics * metrics, uintptr length) noexcept
 		{
+			auto ff = _sources->capi->cairo_ft_scaled_font_lock_face(_default);
 			int32 mode = FT_LOAD_NO_SCALE;
 			double scale;
-			if (_font_face->face_flags & FT_FACE_FLAG_SCALABLE) scale = double(_height) * _scale_factor / _font_face->units_per_EM;
-			else { mode = 0; scale = double(_height) * _scale_factor / double(_font_face->size->metrics.height); }
+			if (ff->face_flags & FT_FACE_FLAG_SCALABLE) scale = double(_height) * _scale_factor / ff->units_per_EM;
+			else { mode = 0; scale = double(_height) * _scale_factor / double(ff->size->metrics.height); }
 			for (uintptr i = 0; i < length; i++) {
-				if (glyph[i] != Graphica::InvalidGlyph && !_tapi->FT_Load_Glyph(_font_face, glyph[i], mode)) {
-					auto & gm = _font_face->glyph->metrics;
+				if (glyph[i] != Graphica::InvalidGlyph && !_sources->tapi->FT_Load_Glyph(ff, glyph[i], mode)) {
+					auto & gm = ff->glyph->metrics;
 					metrics[i].HorizontalAdvance = gm.horiAdvance * scale;
 					metrics[i].HorizontalLeftBearing = gm.horiBearingX * scale;
 					metrics[i].HorizontalRightBearing = (gm.horiAdvance - gm.horiBearingX - gm.width) * scale;
@@ -139,17 +172,21 @@ namespace ESSE
 					metrics[i].HorizontalBottomBearing = metrics[i].HorizontalTopBearing - gm.height * scale;
 				} else Memory::ZeroMemory(&metrics[i], sizeof(Graphica::FontGlyphMetrics));
 			}
+			_sources->capi->cairo_ft_scaled_font_unlock_face(_default);
 		}
 		void CairoFont::GetGlyphsForCharacters(const unichar32 * chr, uint * glyph, uintptr length) noexcept
 		{
+			auto ff = _sources->capi->cairo_ft_scaled_font_lock_face(_default);
 			for (uintptr i = 0; i < length; i++) {
-				auto gi = _tapi->FT_Get_Char_Index(_font_face, chr[i]);
+				auto gi = _sources->tapi->FT_Get_Char_Index(ff, chr[i]);
 				if (gi) glyph[i] = gi; else glyph[i] = Graphica::InvalidGlyph;
 			}
+			_sources->capi->cairo_ft_scaled_font_unlock_face(_default);
 		}
-		void CairoFont::SimulateOblique(void) noexcept { _emulated_style = Graphica::CreateFontOblique; _capi->cairo_ft_font_face_set_synthesize(_font, CAIRO_FT_SYNTHESIZE_OBLIQUE); }
+		void CairoFont::SimulateOblique(void) noexcept { _emulated_style = Graphica::CreateFontOblique; _sources->capi->cairo_ft_font_face_set_synthesize(_font, CAIRO_FT_SYNTHESIZE_OBLIQUE); }
 		uint CairoFont::GetCairoHeight(void) const noexcept { return _height; }
 		cairo_font_face_t CairoFont::GetCairoFont(void) const noexcept { return _font; }
+		cairo_scaled_font_t CairoFont::GetCairoDefaultScaledFont(void) const noexcept { return _default; }
 		double CairoFont::GetCairoFontScale(void) const noexcept { return _scale_factor; }
 
 		class CairoColorBrush : public Graphica::IColorBrush
@@ -297,7 +334,7 @@ namespace ESSE
 			friend class CairoDevice;
 		private:
 			struct glyph_factor { oref<Graphica::IFont> font; Color color; };
-			struct glyph_run { array<cairo_glyph_t> data; double r, g, b, a; };
+			struct glyph_run { array<cairo_glyph_t> data; cairo_scaled_font_t font; double r, g, b, a; };
 			friend bool operator == (const glyph_factor & a, const glyph_factor & b) noexcept { return a.font.Inner() == b.font.Inner() && a.color.value == b.color.value; }
 			friend bool operator != (const glyph_factor & a, const glyph_factor & b) noexcept { return a.font.Inner() != b.font.Inner() || a.color.value != b.color.value; }
 			friend bool operator < (const glyph_factor & a, const glyph_factor & b) noexcept { return a.font.Inner() < b.font.Inner() || (a.font.Inner() == b.font.Inner() && a.color.value < b.color.value); }
@@ -309,26 +346,57 @@ namespace ESSE
 			Graphica::IDeviceContext2D * _parent;
 			cairo_matrix_t _transform;
 			Dictionary<glyph_factor, glyph_run> _glyphs;
+			Dictionary<Graphica::IFont *, cairo_scaled_font_t> _fonts;
 		public:
 			CairoGlyphRun(Graphica::IDeviceContext2D * parent, CairoAPI * api, Graphica::IFont ** fonts, const uint * glyphs, const double * px, const double * py, const Color * colors, uint count, const double * transform) : _parent(parent), _api(api)
 			{
 				if (!fonts || !glyphs || !px || !py || !colors) throw InvalidArgumentException();
-				if (transform) _api->cairo_matrix_init(_transform, transform[0], transform[3], transform[1], transform[4], transform[2], transform[5]);
-				else _api->cairo_matrix_init_identity(_transform);
-				for (uint i = 0; i < count; i++) {
+				cairo_matrix_t font_scale;
+				cairo_font_options_t opt;
+				if (transform) {
+					_api->cairo_matrix_init(_transform, transform[0], transform[3], transform[1], transform[4], transform[2], transform[5]);
+					opt = _api->cairo_font_options_create();
+					if (_api->cairo_font_options_status(opt) != CAIRO_STATUS_SUCCESS) {
+						_api->cairo_font_options_destroy(opt);
+						throw OutOfMemoryException();
+					}
+				} else { _api->cairo_matrix_init_identity(_transform); opt = 0; }
+				try { for (uint i = 0; i < count; i++) {
 					if (glyphs[i] == Graphica::InvalidGlyph) continue;
 					if (!fonts[i]) throw InvalidArgumentException();
 					glyph_factor gf = { .font = fonts[i], .color = colors[i] };
 					if (!_glyphs.ElementExists(gf)) {
-						glyph_run gr = { .data = array<cairo_glyph_t>(count), .r = double(gf.color.r) / 255.0, .g = double(gf.color.g) / 255.0, .b = double(gf.color.b) / 255.0, .a = double(gf.color.a) / 255.0 };
+						cairo_scaled_font_t sf;
+						if (opt) {
+							auto psf = _fonts[fonts[i]];
+							if (!psf) {
+								auto scale = static_cast<CairoFont *>(fonts[i])->GetCairoHeight() * static_cast<CairoFont *>(fonts[i])->GetCairoFontScale();
+								_api->cairo_matrix_init_scale(font_scale, scale, scale);
+								sf = _api->cairo_scaled_font_create(static_cast<CairoFont *>(fonts[i])->GetCairoFont(), font_scale, _transform, opt);
+								if (_api->cairo_scaled_font_status(sf) != CAIRO_STATUS_SUCCESS) {
+									_api->cairo_scaled_font_destroy(sf);
+									throw OutOfMemoryException();
+								}
+								try { _fonts.Append(fonts[i], sf); } catch (...) {
+									_api->cairo_scaled_font_destroy(sf);
+									throw;
+								}
+							} else sf = *psf;
+						} else sf = static_cast<CairoFont *>(fonts[i])->GetCairoDefaultScaledFont();
+						glyph_run gr = { .data = array<cairo_glyph_t>(count), .font = sf, .r = double(gf.color.r) / 255.0, .g = double(gf.color.g) / 255.0, .b = double(gf.color.b) / 255.0, .a = double(gf.color.a) / 255.0 };
 						_glyphs.Append(gf, gr);
 					}
 					auto gr = _glyphs[gf];
 					if (!gr) throw InvalidStateException();
 					gr->data.Append(cairo_glyph_t { .index = glyphs[i], .x = px[i], .y = py[i] });
+				} } catch (...) {
+					for (auto & f : _fonts) _api->cairo_scaled_font_destroy(f.value);
+					if (opt) _api->cairo_font_options_destroy(opt);
+					throw;
 				}
+				if (opt) _api->cairo_font_options_destroy(opt);
 			}
-			virtual ~CairoGlyphRun(void) override {}
+			virtual ~CairoGlyphRun(void) override { for (auto & f : _fonts) _api->cairo_scaled_font_destroy(f.value); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"Cairo glyph run"; ESSE_TRY_OUTRO(string()) }
 			virtual Graphica::IDevice * GetParentDevice(void) noexcept override { return 0; }
 			virtual Graphica::IDeviceContext2D * GetParentContext(void) noexcept override { return _parent; }
@@ -556,13 +624,10 @@ namespace ESSE
 			_api->cairo_matrix_multiply(translation, r->_transform, translation);
 			_api->cairo_set_matrix(_context, translation);
 			for (auto & sr : r->_glyphs) {
-				auto font = static_cast<CairoFont *>(sr.key.font.Inner());
-				_api->cairo_set_font_face(_context, font->GetCairoFont());
-				_api->cairo_set_font_size(_context, font->GetCairoHeight() * font->GetCairoFontScale());
+				_api->cairo_set_scaled_font(_context, sr.value.font);
 				_api->cairo_set_source_rgba(_context, sr.value.r, sr.value.g, sr.value.b, sr.value.a);
 				_api->cairo_show_glyphs(_context, sr.value.data, sr.value.data.GetLength());
 			}
-			_api->cairo_set_font_face(_context, 0);
 			_api->cairo_set_matrix(_context, base);
 		}
 		bool CairoDevice::BeginRendering(Graphica::TextureLoadAction load, const Color & clear_color) noexcept
@@ -589,8 +654,9 @@ namespace ESSE
 		{
 			if (!_state || !_context) return false;
 			_api->cairo_surface_flush(static_cast<CairoBitmap *>(_bitmap.Inner())->GetSurface());
+			auto status = _api->cairo_surface_status(static_cast<CairoBitmap *>(_bitmap.Inner())->GetSurface());
 			_state = false;
-			return true;
+			return status == CAIRO_STATUS_SUCCESS;
 		}
 		cairo_t CairoDevice::GetCairo(void) const noexcept { return _context; }
 		CairoAPI * CairoDevice::GetAPI(void) const noexcept { return _api; }

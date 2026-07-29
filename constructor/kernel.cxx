@@ -343,9 +343,9 @@ namespace esse {
 				state.defines_list.Append(L"ESSE_META_VERSIO_ITERATIO", state.app.application_build_number);
 				state.defines_list.Append(L"ESSE_META_VERSIO_BREVIS", L"U\"" + string(state.app.application_version_major) + L"." + string(state.app.application_version_minor) + L"\"");
 				state.defines_list.Append(L"ESSE_META_NOMEN_INTERNUM", L"U\"" + escape_string_c(state.app.application_internal_name) + L"\"");
-				state.defines_list.Append(L"ESSE_META_INDENTITAS_APPLICATIONIS", L"U\"" + escape_string_c(state.app.application_identifier) + L"\"");
-				state.defines_list.Append(L"ESSE_META_INDENTITAS_AUTHORIS", L"U\"" + escape_string_c(state.app.author_identifier) + L"\"");
 			}
+			state.defines_list.Append(L"ESSE_META_INDENTITAS_APPLICATIONIS", L"U\"" + escape_string_c(state.app.application_identifier) + L"\"");
+			state.defines_list.Append(L"ESSE_META_INDENTITAS_AUTHORIS", L"U\"" + escape_string_c(state.app.author_identifier) + L"\"");
 			return true;
 		}
 		string find_resource_file(const build_state & state, const string & current_root, const string & name)

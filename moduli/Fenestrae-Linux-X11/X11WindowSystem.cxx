@@ -104,6 +104,17 @@ namespace ESSE
 				} else return false;
 			});
 		}
+		void SetClassHint(XLibAPI * api, Display * display, Window window) noexcept
+		{
+			try {
+				ucs1_string ident = FormatString(U"com.%0.%1", ESSE_META_INDENTITAS_AUTHORIS, ESSE_META_INDENTITAS_APPLICATIONIS);
+				ucs1_string exec = IO::Path::GetFileName(IO::GetExecutablePath());
+				XClassHint hint;
+				hint.res_name = exec;
+				hint.res_class = ident;
+				api->XSetClassHint(display, window, &hint);
+			} catch (...) {}
+		}
 
 		Pixmap LoadPixmap(XServerConnection * con, Picturae::Picture * image) noexcept
 		{
@@ -680,6 +691,7 @@ namespace ESSE
 					api->XSetWMHints(display, _window, &hints);
 				}
 				if (main_desc->style & Windows::WindowStyleSetOpacity) SetOpacity(_opacity);
+				SetClassHint(api, display, _window);
 				_im = api->XOpenIM(display, 0, 0, 0);
 				_ic = api->XCreateIC(_im, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, _window, NULL);
 				if (!_im || !_ic) {
@@ -1012,7 +1024,7 @@ namespace ESSE
 					ucs1_string utf8 = text;
 					auto api = _con->GetAPI();
 					auto display = _con->GetXDisplay();
-					api->XChangeProperty(display, _window, _atoms->wm_name, _atoms->text_utf8, 8, PropModeReplace, utf8.GetData(), utf8.GetLength() + 1);
+					api->XChangeProperty(display, _window, _atoms->wm_name, _atoms->text_utf8, 8, PropModeReplace, utf8.GetData(), utf8.GetLength());
 					api->XChangeProperty(display, _window, _atoms->net_wm_name, _atoms->text_utf8, 8, PropModeReplace, utf8.GetData(), utf8.GetLength() + 1);
 					api->XChangeProperty(display, _window, _atoms->net_wm_visible_name, _atoms->text_utf8, 8, PropModeReplace, utf8.GetData(), utf8.GetLength() + 1);
 				} catch (...) {}

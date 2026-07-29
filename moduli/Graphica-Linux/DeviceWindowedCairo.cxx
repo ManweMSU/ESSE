@@ -64,9 +64,10 @@ namespace ESSE
 		bool CairoDeviceX11::EndRendering(void) noexcept
 		{
 			if (!_online || !_state) return false;
+			auto status = _api->cairo_status(_context);
 			_state = false;
 			_con->GetAPI()->XCopyArea(_con->GetXDisplay(), _backbuffer, _window, _blt_context, 0, 0, _viewport.x, _viewport.y, 0, 0);
-			return true;
+			return status == CAIRO_STATUS_SUCCESS;
 		}
 		void CairoDeviceX11::Reset(void) noexcept
 		{

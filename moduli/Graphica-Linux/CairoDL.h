@@ -135,6 +135,8 @@ namespace ESSE
 		DEFINE_HANDLE_TYPE(cairo_surface_t)
 		DEFINE_HANDLE_TYPE(cairo_pattern_t)
 		DEFINE_HANDLE_TYPE(cairo_font_face_t)
+		DEFINE_HANDLE_TYPE(cairo_scaled_font_t)
+		DEFINE_HANDLE_TYPE(cairo_font_options_t)
 		DEFINE_HANDLE_TYPE(FcConfig)
 		DEFINE_HANDLE_TYPE(FcPattern)
 		DEFINE_HANDLE_TYPE(FcCharSet)
@@ -152,6 +154,7 @@ namespace ESSE
 			double               x;
 			double               y;
 		} cairo_glyph_t;
+		typedef void (* cairo_destroy_func_t) (void * data);
 		typedef struct _FcFontSet {
 			int			nfont;
 			int			sfont;
@@ -340,12 +343,24 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(cairo_ft_font_face_create_for_ft_face, cairo_font_face_t, (FT_Face, int))
 			DEFINE_FUNCTION_POINTER(cairo_font_face_status, cairo_status_t, (cairo_font_face_t))
 			DEFINE_FUNCTION_POINTER(cairo_font_face_destroy, void, (cairo_font_face_t))
+			DEFINE_FUNCTION_POINTER(cairo_font_face_get_user_data, void *, (cairo_font_face_t, handle))
+			DEFINE_FUNCTION_POINTER(cairo_font_face_set_user_data, cairo_status_t, (cairo_font_face_t, handle, void *, cairo_destroy_func_t))
 			DEFINE_FUNCTION_POINTER(cairo_ft_font_face_set_synthesize, void, (cairo_font_face_t, unsigned int))
 			DEFINE_FUNCTION_POINTER(cairo_ft_font_face_unset_synthesize, void, (cairo_font_face_t, unsigned int))
 			DEFINE_FUNCTION_POINTER(cairo_ft_font_face_get_synthesize, unsigned int, (cairo_font_face_t))
+			DEFINE_FUNCTION_POINTER(cairo_scaled_font_create, cairo_scaled_font_t, (cairo_font_face_t, const cairo_matrix_t &, const cairo_matrix_t &, cairo_font_options_t))
+			DEFINE_FUNCTION_POINTER(cairo_scaled_font_status, cairo_status_t, (cairo_scaled_font_t))
+			DEFINE_FUNCTION_POINTER(cairo_scaled_font_destroy, void, (cairo_scaled_font_t))
+			DEFINE_FUNCTION_POINTER(cairo_ft_scaled_font_lock_face, FT_Face, (cairo_scaled_font_t))
+			DEFINE_FUNCTION_POINTER(cairo_ft_scaled_font_unlock_face, void, (cairo_scaled_font_t))
 			DEFINE_FUNCTION_POINTER(cairo_set_font_face, void, (cairo_t, cairo_font_face_t))
 			DEFINE_FUNCTION_POINTER(cairo_set_font_size, void, (cairo_t, double))
+			DEFINE_FUNCTION_POINTER(cairo_set_scaled_font, void, (cairo_t, cairo_scaled_font_t))
 			DEFINE_FUNCTION_POINTER(cairo_show_glyphs, void, (cairo_t, const cairo_glyph_t *, int))
+			DEFINE_FUNCTION_POINTER(cairo_font_options_create, cairo_font_options_t, (void))
+			DEFINE_FUNCTION_POINTER(cairo_font_options_status, cairo_status_t, (cairo_font_options_t))
+			DEFINE_FUNCTION_POINTER(cairo_font_options_destroy, void, (cairo_font_options_t))
+			DEFINE_FUNCTION_POINTER(cairo_debug_reset_static_data, void, (void))
 			#ifdef ESSE_MODULUS_FENESTRARUM_LINUX_X11
 			DEFINE_FUNCTION_POINTER(cairo_xlib_surface_create_with_xrender_format, cairo_surface_t, (void *, unsigned long, void *, void *, int, int))
 			DEFINE_FUNCTION_POINTER(cairo_xlib_surface_set_drawable, void, (cairo_surface_t, unsigned long, int, int))

@@ -27,11 +27,20 @@ namespace ESSE
 		};
 		class CairoFont : public Graphica::IFont
 		{
+			struct CairoFontSources : public Object
+			{
+				oref<CairoAPI> capi;
+				oref<FreeTypeAPI> tapi;
+				FT_Face font_face;
+				CairoFontSources(void) noexcept;
+				virtual ~CairoFontSources(void) override;
+			};
+			static void CairoFontSourcesDestroy(void * sources) noexcept;
+		private:
 			oref<Graphica::IDeviceContextFactory2D> _parent_factory;
-			oref<CairoAPI> _capi;
-			oref<FreeTypeAPI> _tapi;
-			FT_Face _font_face;
+			oref<CairoFontSources> _sources;
 			cairo_font_face_t _font;
+			cairo_scaled_font_t _default;
 			uint _height, _emulated_style;
 			double _scale_factor;
 		public:
@@ -47,6 +56,7 @@ namespace ESSE
 			void SimulateOblique(void) noexcept;
 			uint GetCairoHeight(void) const noexcept;
 			cairo_font_face_t GetCairoFont(void) const noexcept;
+			cairo_scaled_font_t GetCairoDefaultScaledFont(void) const noexcept;
 			double GetCairoFontScale(void) const noexcept;
 		};
 		class CairoDevice : public Graphica::IDeviceContext2D
