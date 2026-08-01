@@ -188,34 +188,38 @@ namespace Engine
 					return true;
 				} else return false;
 			}
-			void _index_icon_theme(const string & path, const string & usage, uint size, uint scale)
+			void _index_icon_theme(Volumes::Dictionary<uint, string> & dest, const string & path, const string & usage, const string & type, uint size, uint scale)
 			{
-				uint fxsize = size * scale;
-				uint refsize = 16 * UI::CurrentScaleFactor;
-				if (fxsize == refsize && usage == U"MimeTypes") icon_roots.Append(path);
+				int fxsize = size * scale;
+				int refsize = 16 * UI::CurrentScaleFactor;
+				uint diff = (type == U"Scalable") ? 0 : uint(abs(fxsize - refsize));
+				if (usage == U"MimeTypes") dest.Append(diff, path);
 			}
 			void _index_icon_theme(const string & root)
 			{
 				try {
 					SafePointer<Streaming::FileStream> stream = new Streaming::FileStream(root + U"/index.theme", Streaming::AccessRead, Streaming::OpenExisting);
 					SafePointer<Streaming::TextReader> reader = new Streaming::TextReader(stream, Encoding::UTF8);
-					string path, usage;
-					uint pxsize, scale;
+					Volumes::Dictionary<uint, string> scale_variants;
+					string path, usage, type;
+					uint pxsize = 0, scale = 1;
 					while (!reader->EofReached()) {
 						auto line = reader->ReadLine();
 						if (line[0] == U'[') {
 							if (line == U"[Icon Theme]") path = U""; else {
-								if (path.Length()) _index_icon_theme(root + U"/" + path, usage, pxsize, scale);
+								if (path.Length()) _index_icon_theme(scale_variants, root + U"/" + path, usage, type, pxsize, scale);
 								path = line.Fragment(1, line.Length() - 2);
-								usage = U""; pxsize = 0; scale = 1;
+								usage = U""; type = U""; pxsize = 0; scale = 1;
 							}
 						} else if (line.Length() && line[0] != U'#' && path.Length()) {
 							if (line.Fragment(0, 5) == U"Size=") pxsize = line.Fragment(5, -1).ToUInt32();
 							else if (line.Fragment(0, 6) == U"Scale=") scale = line.Fragment(6, -1).ToUInt32();
 							else if (line.Fragment(0, 8) == U"Context=") usage = line.Fragment(8, -1);
+							else if (line.Fragment(0, 5) == U"Type=") type = line.Fragment(5, -1);
 						}
 					}
-					if (path.Length()) _index_icon_theme(root + U"/" + path, usage, pxsize, scale);
+					if (path.Length()) _index_icon_theme(scale_variants, root + U"/" + path, usage, type, pxsize, scale);
+					if (!scale_variants.IsEmpty()) icon_roots.Append(scale_variants.GetFirst()->GetValue().value);
 				} catch (...) {}
 			}
 			mime_entry * _load_mime_data(const string & mime)
@@ -439,9 +443,15 @@ namespace Engine
 			}
 			void _init_mime_mapping(void)
 			{
+				auto xdg_data_home = GetEnvironmentVariable("XDG_DATA_HOME");
+				if (!xdg_data_home.Length()) {
+					auto home = GetEnvironmentVariable("HOME");
+					xdg_data_home = home + U"/.local/share";
+				}
 				auto xdg_data_dirs = GetEnvironmentVariable("XDG_DATA_DIRS");
 				if (!xdg_data_dirs.Length()) xdg_data_dirs = U"/usr/local/share:/usr/share";
 				xdg_roots = xdg_data_dirs.Split(U':');
+				xdg_roots.Insert(xdg_data_home, 0);
 				for (auto & r : xdg_roots) try {
 					Streaming::FileStream stream(r + U"/mime/globs", Streaming::AccessRead, Streaming::OpenExisting);
 					Streaming::TextReader reader(&stream, Encoding::UTF8);
