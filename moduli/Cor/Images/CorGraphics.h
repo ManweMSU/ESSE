@@ -203,6 +203,11 @@ namespace ESSE
 			WindowLayerAttributeAlphaChannelStraight		= 0x02000000,
 			WindowLayerAttributeAlphaChannelPremultiplied	= 0x04000000,
 			WindowLayerAttributeExtendedDynamicRange		= 0x08000000,
+			WindowLayerAttributePresentModeDontCare			= 0x00000000,
+			WindowLayerAttributePresentModeImmediate		= 0x10000000,
+			WindowLayerAttributePresentModeSequential		= 0x20000000,
+			WindowLayerAttributePresentModeSynchronous		= 0x30000000,
+			WindowLayerAttributePresentModeMask				= 0x30000000,
 			WindowLayerAttributeMask						= 0xFF000000
 		};
 		enum CreateFontFlags : uint {

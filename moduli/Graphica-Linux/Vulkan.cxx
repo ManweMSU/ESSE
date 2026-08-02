@@ -2029,7 +2029,7 @@ namespace ESSE
 				pass->stub_sampler = _stub_sampler;
 				return pass;
 			}
-			bool SubmitPass(VKPass * submit) noexcept
+			bool SubmitPass(VKPass * submit, VkSemaphore sem_open = 0) noexcept
 			{
 				for (uintptr i = 0; i < _submitted.GetLength(); i++) {
 					auto pass = _submitted(i);
@@ -2051,6 +2051,7 @@ namespace ESSE
 				submit->slot = _circular;
 				if (_api->Dispatch.vkEndCommandBuffer(submit->buffer) != VK_SUCCESS) return false;
 				VkSubmitInfo submit_info;
+				VkSemaphore sem_open_internal;
 				submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 				submit_info.pNext = 0;
 				submit_info.waitSemaphoreCount = 0;
@@ -2058,8 +2059,14 @@ namespace ESSE
 				submit_info.pWaitDstStageMask = 0;
 				submit_info.commandBufferCount = 1;
 				submit_info.pCommandBuffers = &submit->buffer;
-				submit_info.signalSemaphoreCount = 0;
-				submit_info.pSignalSemaphores = 0;
+				if (sem_open) {
+					sem_open_internal = sem_open;
+					submit_info.signalSemaphoreCount = 1;
+					submit_info.pSignalSemaphores = &sem_open_internal;
+				} else {
+					submit_info.signalSemaphoreCount = 0;
+					submit_info.pSignalSemaphores = 0;
+				}
 				if (_api->Dispatch.vkQueueSubmit(_queue, 1, &submit_info, _completion[_circular]) != VK_SUCCESS) return false;
 				_submitted.SetElement(submit, _circular);
 				_circular = (_circular + 1) % _vk_submission_slots;
@@ -4083,14 +4090,16 @@ namespace ESSE
 			oref<VKSurface> _surface;
 			array<VkImage> _images;
 			array<VkImageLayout> _image_layouts;
+			array<VkSemaphore> _sync;
 			VkSwapchainKHR _swapchain;
 			VkFence _fence;
 			uint _width, _height;
 			bool _allocated;
 		public:
-			VKSwapChain(VKDeviceAPI * api, VKSurface * surface) : _api(api), _surface(surface), _images(1), _image_layouts(1), _swapchain(0), _fence(0), _allocated(false) {}
+			VKSwapChain(VKDeviceAPI * api, VKSurface * surface) : _api(api), _surface(surface), _images(1), _image_layouts(1), _sync(1), _swapchain(0), _fence(0), _allocated(false) {}
 			virtual ~VKSwapChain(void) override
 			{
+				for (auto & s : _sync) if (s) _api->Dispatch.vkDestroySemaphore(_api->Device, s, &_api->Base->Allocator);
 				if (_swapchain) _api->Dispatch.vkDestroySwapchainKHR(_api->Device, _swapchain, &_api->Base->Allocator);
 				if (_fence) _api->Dispatch.vkDestroyFence(_api->Device, _fence, &_api->Base->Allocator);
 			}
@@ -4182,7 +4191,37 @@ namespace ESSE
 						} else return false;
 					}
 				}
-				swapchain_info.presentMode = modes[0];
+				bool supports_present_immediate = false, supports_present_sequential = false, supports_present_synchronous = false;
+				for (auto & m : modes) {
+					if (m == VK_PRESENT_MODE_IMMEDIATE_KHR) supports_present_immediate = true;
+					else if (m == VK_PRESENT_MODE_FIFO_KHR) supports_present_sequential = true;
+					else if (m == VK_PRESENT_MODE_MAILBOX_KHR) supports_present_synchronous = true;
+				}
+				uint present_desired = desired_attribute & WindowLayerAttributePresentModeMask;
+				if (present_desired == WindowLayerAttributePresentModeImmediate) {
+					if (supports_present_immediate) {
+						swapchain_info.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+						effective_attribute |= WindowLayerAttributePresentModeImmediate;
+					} else return false;
+				} else if (present_desired == WindowLayerAttributePresentModeSequential) {
+					if (supports_present_sequential) {
+						swapchain_info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+						effective_attribute |= WindowLayerAttributePresentModeSequential;
+					} else return false;
+				} else if (present_desired == WindowLayerAttributePresentModeSynchronous) {
+					if (supports_present_synchronous) {
+						swapchain_info.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+						effective_attribute |= WindowLayerAttributePresentModeSynchronous;
+					} else return false;
+				} else {
+					if (supports_present_synchronous) {
+						swapchain_info.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+						effective_attribute |= WindowLayerAttributePresentModeSynchronous;
+					} else if (supports_present_sequential) {
+						swapchain_info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+						effective_attribute |= WindowLayerAttributePresentModeSequential;
+					} else swapchain_info.presentMode = modes[0];
+				}
 				swapchain_info.clipped = VK_TRUE;
 				swapchain_info.oldSwapchain = previous ? previous->_swapchain : 0;
 				if (_api->Dispatch.vkCreateSwapchainKHR(_api->Device, &swapchain_info, &_api->Base->Allocator, &_swapchain) != VK_SUCCESS) return false;
@@ -4195,13 +4234,22 @@ namespace ESSE
 					if (_api->Dispatch.vkGetSwapchainImagesKHR(_api->Device, _swapchain, &count, _images) < 0) return false;
 					if (count < _images.GetLength()) _images.SetLength(count);
 					_image_layouts.SetLength(_images.GetLength());
+					_sync.SetLength(_images.GetLength());
 					for (auto & l : _image_layouts) l = VK_IMAGE_LAYOUT_UNDEFINED;
+					for (auto & s : _sync) s = 0;
+					for (auto & s : _sync) {
+						VkSemaphoreCreateInfo sem;
+						sem.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+						sem.pNext = 0;
+						sem.flags = 0;
+						if (_api->Dispatch.vkCreateSemaphore(_api->Device, &sem, &_api->Base->Allocator, &s) != VK_SUCCESS) { s = 0; return false; }
+					}
 				} catch (...) { return false; }
 				return true;
 			}
 			VkSwapchainKHR & GetSwapchain(void) noexcept { return _swapchain; }
 			VkResult AcquireNextImage(uint & index) noexcept { return _api->Dispatch.vkAcquireNextImageKHR(_api->Device, _swapchain, 1000000000UL, 0, _fence, &index); }
-			void QueryImage(uint index, VkImage & image, VkImageLayout *& layout) noexcept { image = _images[index]; layout = &_image_layouts[index]; }
+			void QueryImage(uint index, VkImage & image, VkImageLayout *& layout, VkSemaphore & sync) noexcept { image = _images[index]; layout = &_image_layouts[index]; sync = _sync[index]; }
 			bool ResetFence(void) noexcept { if (_api->Dispatch.vkResetFences(_api->Device, 1, &_fence) < 0) return false; else return true; }
 			bool WaitFence(void) noexcept { return _api->Dispatch.vkWaitForFences(_api->Device, 1, &_fence, VK_TRUE, 1000000000UL) == VK_SUCCESS; }
 			bool IsAllocated(void) noexcept { return _allocated; }
@@ -4243,6 +4291,7 @@ namespace ESSE
 				uint num_retr = 0;
 				VkImage image;
 				VkImageLayout * layout;
+				VkSemaphore sync;
 				uint image_index;
 				while (true) {
 					num_retr++;
@@ -4256,7 +4305,7 @@ namespace ESSE
 						continue;
 					}
 					_swapchain->SetAllocated(true);
-					_swapchain->QueryImage(image_index, image, layout);
+					_swapchain->QueryImage(image_index, image, layout, sync);
 					if (!_swapchain->WaitFence()) return false;
 					break;
 				}
@@ -4316,14 +4365,14 @@ namespace ESSE
 				barrier[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 				barrier[0].subresourceRange.baseArrayLayer = barrier[0].subresourceRange.baseMipLevel = 0;
 				barrier[0].subresourceRange.layerCount = barrier[0].subresourceRange.levelCount = 1;
-				api->Dispatch.vkCmdPipelineBarrier(pass->buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, 0, 0, 0, 1, barrier);
+				api->Dispatch.vkCmdPipelineBarrier(pass->buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, 0, 0, 0, 1, barrier);
 				*layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-				if (!_queue->SubmitPass(pass)) return false;
+				if (!_queue->SubmitPass(pass, sync)) return false;
 				VkPresentInfoKHR present;
 				present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 				present.pNext = 0;
-				present.waitSemaphoreCount = 0;
-				present.pWaitSemaphores = 0;
+				present.waitSemaphoreCount = 1;
+				present.pWaitSemaphores = &sync;
 				present.swapchainCount = 1;
 				present.pSwapchains = &_swapchain->GetSwapchain();
 				present.pImageIndices = &image_index;
