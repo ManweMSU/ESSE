@@ -2446,7 +2446,7 @@ namespace ESSE
 					range.pNext = 0;
 					range.memory = object->_transit->_memory;
 					range.offset = 0;
-					range.size = effective_size;
+					range.size = VK_WHOLE_SIZE;
 					_api->Dispatch.vkFlushMappedMemoryRanges(_api->Device, 1, &range);
 					_api->Dispatch.vkUnmapMemory(_api->Device, object->_transit->_memory);
 					VkBufferMemoryBarrier barrier[2];
