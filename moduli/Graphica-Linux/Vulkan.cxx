@@ -37,7 +37,7 @@ namespace ESSE
 	{
 		constexpr uintptr _vk_extensions_slots = 0x10;
 		constexpr uintptr _vk_submission_slots = 0x10;
-		constexpr uintptr _vk_descriptor_pool_size = 0x80;
+		constexpr uintptr _vk_descriptor_pool_size = 0x200;
 		constexpr uintptr _vk_constant_buffer_size = 0x10000;
 
 		const char * _vk_desired_interface_extensions[] {
@@ -490,6 +490,32 @@ namespace ESSE
 			else if (type == TextureType::Type3D) return 3;
 			else return 0;
 		}
+		void ReadShaderResourceMapping(const void * spirv, uintptr length, array<uint> & mapping, uintptr & offset, ErrorContext & ectx) noexcept
+		{
+			ESSE_TRY_INTRO
+				auto data = reinterpret_cast<const uint *>(spirv);
+				uintptr length4 = length >> 2U, i = 0;
+				while (i < length4 && data[i]) i++;
+				mapping.SetLength(i);
+				for (uintptr j = 0; j < i; j++) mapping[j] = data[j];
+				offset = i + 1;
+			ESSE_TRY_OUTRO()
+		}
+		void ReadShaderResourceMapping(const char * glsl, array<uint> & mapping, ErrorContext & ectx) noexcept
+		{
+			ESSE_TRY_INTRO
+				mapping.Clear();
+				uintptr length = Memory::StringLength(glsl), i = 0, e;
+				while (i + 8 <= length) { if (Memory::MemoryCompare(glsl + i, "// XWSM:", 8) == 0) break; i++; }
+				i += 8;
+				if (i >= length) return;
+				e = i;
+				while (e < length && glsl[e] != '\n') e++;
+				auto tmap = SplitString(string(glsl + i, e - i), U':');
+				mapping.SetLength(tmap.GetLength());
+				for (uintptr j = 0; j < tmap.GetLength(); j++) mapping[j] = tmap[j].ToUInt32(HexadecimalBase);
+			ESSE_TRY_OUTRO()
+		}
 
 		oref<IDeviceFactory> _common_device_factory;
 		uint _default_device_desired	= 0;
@@ -642,13 +668,15 @@ namespace ESSE
 			VkShaderModule _module;
 			ShaderType _type;
 			ucs1_string _name, _entry;
+			array<uint> _rmapping;
 		public:
-			VKShader(VKDeviceAPI * api, IDevice * parent) : _api(api), _parent(parent), _module(0) {}
+			VKShader(VKDeviceAPI * api, IDevice * parent) : _api(api), _parent(parent), _module(0), _rmapping(1) {}
 			virtual ~VKShader(void) override { if (_module) _api->Dispatch.vkDestroyShaderModule(_api->Device, _module, &_api->Base->Allocator); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"VKShader"; ESSE_TRY_OUTRO(string()) }
 			virtual IDevice * GetParentDevice(void) noexcept override { return _parent; }
 			virtual const ucs1_string & GetName(void) noexcept override { return _name; }
 			virtual ShaderType GetType(void) noexcept override { return _type; }
+			array<uint> & GetResourceMapping(void) noexcept { return _rmapping; }
 		};
 		class VKShaderLibrary : public IShaderLibrary
 		{
@@ -672,23 +700,293 @@ namespace ESSE
 			}
 			virtual oref<IShader> CreateShader(const ucs1_string & name) noexcept override { return _shaders[name]; }
 		};
+		class VKDeviceStats : public Object
+		{
+		public:
+			oref<VKDeviceAPI> api;
+			VkPhysicalDevice physical_device;
+			uint max_constants, max_samplers, max_buffers, max_textures, max_per_stage, constant_alignment;
+		public:
+			VKDeviceStats(VKDeviceAPI * device, VkPhysicalDevice physical) : api(device), physical_device(physical)
+			{
+				VkPhysicalDeviceProperties props;
+				api->Dispatch.vkGetPhysicalDeviceProperties(physical_device, &props);
+				constant_alignment = props.limits.nonCoherentAtomSize;
+				max_per_stage = props.limits.maxPerStageResources;
+				max_constants = min(props.limits.maxPerStageDescriptorUniformBuffers, props.limits.maxDescriptorSetUniformBuffers / 2);
+				max_samplers = min(props.limits.maxPerStageDescriptorSamplers, props.limits.maxDescriptorSetSamplers / 2);
+				max_buffers = min(props.limits.maxPerStageDescriptorStorageBuffers, props.limits.maxDescriptorSetStorageBuffers / 2);
+				max_textures = min(props.limits.maxPerStageDescriptorSampledImages, props.limits.maxDescriptorSetSampledImages / 2);
+				if (max_constants > MaxRuntimePerShaderConstants) max_constants = MaxRuntimePerShaderConstants;
+				if (max_samplers > MaxRuntimePerShaderSamplers) max_samplers = MaxRuntimePerShaderSamplers;
+				if (max_buffers > MaxRuntimePerShaderBuffers) max_buffers = MaxRuntimePerShaderBuffers;
+				if (max_textures > MaxRuntimePerShaderTextures) max_textures = MaxRuntimePerShaderTextures;
+				if (_device_validation_layer) {
+					VKValidationOutput("Vulkan API: numerus maximus selectorum constatorum: %i.\n", reinterpret_cast<char *>(intptr(max_constants)));
+					VKValidationOutput("Vulkan API: numerus maximus selectorum exceptorum: %i.\n", reinterpret_cast<char *>(intptr(max_samplers)));
+					VKValidationOutput("Vulkan API: numerus maximus selectorum serierum: %i.\n", reinterpret_cast<char *>(intptr(max_buffers)));
+					VKValidationOutput("Vulkan API: numerus maximus selectorum texturarum: %i.\n", reinterpret_cast<char *>(intptr(max_textures)));
+					VKValidationOutput("Vulkan API: numerus maximus selectorum per stadio: %i.\n", reinterpret_cast<char *>(intptr(max_per_stage)));
+					VKValidationOutput("Vulkan API: politio constatorum: %i.\n", reinterpret_cast<char *>(intptr(constant_alignment)));
+				}
+			}
+			virtual ~VKDeviceStats(void) override {}
+		};
+		class VKDescriptorAllocator : public Object
+		{
+		public:
+			oref<VKDeviceAPI> api;
+			VkDescriptorPool pool;
+			uint allocations, state; // 0 - usable, 1 - needs reset
+		public:
+			VKDescriptorAllocator(VKDeviceAPI * device) : api(device), pool(0), allocations(0), state(0) {}
+			virtual ~VKDescriptorAllocator(void) override { if (pool) api->Dispatch.vkDestroyDescriptorPool(api->Device, pool, &api->Base->Allocator); }
+			bool Initialize(const VkDescriptorPoolSize * sizes, uint sizes_count) noexcept
+			{
+				if (pool) return true;
+				VkDescriptorPoolCreateInfo info;
+				info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+				info.pNext = 0;
+				info.flags = 0;
+				info.maxSets = _vk_descriptor_pool_size;
+				info.poolSizeCount = sizes_count;
+				info.pPoolSizes = sizes;
+				if (api->Dispatch.vkCreateDescriptorPool(api->Device, &info, &api->Base->Allocator, &pool) != VK_SUCCESS) return false;
+				return true;
+			}
+		};
+		class VKPipelineLayout : public Object
+		{
+		public:
+			static constexpr uint selector_mapping_esse_stage_vertex	= 0x00000000;
+			static constexpr uint selector_mapping_esse_stage_pixel		= 0x10000000;
+			static constexpr uint selector_mapping_esse_stage_mask		= 0xF0000000;
+			static constexpr uint selector_mapping_esse_type_constant	= 0x01000000;
+			static constexpr uint selector_mapping_esse_type_buffer		= 0x02000000;
+			static constexpr uint selector_mapping_esse_type_texture	= 0x03000000;
+			static constexpr uint selector_mapping_esse_type_sampler	= 0x04000000;
+			static constexpr uint selector_mapping_esse_type_mask		= 0x0F000000;
+			static constexpr uint selector_mapping_esse_index_mask		= 0x00FF0000;
+			static constexpr uint selector_mapping_esse_mask			= 0xFFFF0000;
+			static constexpr uint selector_mapping_vulkan_mask			= 0x0000FFFF;
+		public:
+			oref<VKDeviceStats> stats;
+			VkDescriptorSetLayout descriptor_layout;
+			VkPipelineLayout pipeline_layout;
+			string symbol;
+			Dictionary<uint, uint> smap; // esse selector -> vulkan selector
+			uint constants, buffers, textures, samplers, allocate_descriptor_sizes_length;
+			object_array<VKDescriptorAllocator> allocators;
+			VkDescriptorPoolSize allocate_descriptor_sizes[4];
+		public:
+			VKPipelineLayout(VKDeviceStats * devstat) : stats(devstat), descriptor_layout(0), pipeline_layout(0), allocators(0x40) {}
+			virtual ~VKPipelineLayout(void) override
+			{
+				auto api = stats->api.Inner();
+				if (pipeline_layout) api->Dispatch.vkDestroyPipelineLayout(api->Device, pipeline_layout, &api->Base->Allocator);
+				if (descriptor_layout) api->Dispatch.vkDestroyDescriptorSetLayout(api->Device, descriptor_layout, &api->Base->Allocator);
+			}
+			static string MakeLayoutSymbol(VKShader * vertex, VKShader * pixel)
+			{
+				array<uint> linear(vertex->GetResourceMapping().GetLength() + pixel->GetResourceMapping().GetLength());
+				linear.Append(vertex->GetResourceMapping());
+				linear.Append(pixel->GetResourceMapping());
+				SortArray(linear);
+				dynamic_string_ucs4 result;
+				for (auto & i : linear) result += string(i, HexadecimalBase, 8);
+				return result;
+			}
+			bool Initialize(VKShader * vertex, VKShader * pixel) noexcept
+			{
+				auto api = stats->api.Inner();
+				array<VkDescriptorSetLayoutBinding> binding_desc(1);
+				try {
+					symbol = MakeLayoutSymbol(vertex, pixel);
+					for (auto & m : vertex->GetResourceMapping()) if (!smap.Append(m & selector_mapping_esse_mask, m & selector_mapping_vulkan_mask));
+					for (auto & m : pixel->GetResourceMapping()) if (!smap.Append(m & selector_mapping_esse_mask, m & selector_mapping_vulkan_mask));
+					uint vulkan_desc_max = 0;
+					uint per_stage_constants[2] = { 0, 0 };
+					uint per_stage_buffers[2] = { 0, 0 };
+					uint per_stage_textures[2] = { 0, 0 };
+					uint per_stage_samplers[2] = { 0, 0 };
+					for (auto & m : smap) {
+						if (m.value > vulkan_desc_max) vulkan_desc_max = m.value;
+						if ((m.key & selector_mapping_esse_stage_mask) == selector_mapping_esse_stage_vertex) {
+							if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_constant) per_stage_constants[0]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_buffer) per_stage_buffers[0]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_texture) per_stage_textures[0]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_sampler) per_stage_samplers[0]++;
+							else return false;
+						} else if ((m.key & selector_mapping_esse_stage_mask) == selector_mapping_esse_stage_pixel) {
+							if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_constant) per_stage_constants[1]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_buffer) per_stage_buffers[1]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_texture) per_stage_textures[1]++;
+							else if ((m.key & selector_mapping_esse_type_mask) == selector_mapping_esse_type_sampler) per_stage_samplers[1]++;
+							else return false;
+						} else return false;
+					}
+					if (per_stage_constants[0] + per_stage_buffers[0] + per_stage_textures[0] + per_stage_samplers[0] > stats->max_per_stage) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum auxiliorum per stadio verticis (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_constants[0] + per_stage_buffers[0] + per_stage_textures[0] + per_stage_samplers[0])));
+						return false;
+					}
+					if (per_stage_constants[1] + per_stage_buffers[1] + per_stage_textures[1] + per_stage_samplers[1] > stats->max_per_stage) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum auxiliorum per stadio puncti (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_constants[1] + per_stage_buffers[1] + per_stage_textures[1] + per_stage_samplers[1])));
+						return false;
+					}
+					if (per_stage_constants[0] > stats->max_constants) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum constatorum per stadio verticis (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_constants[0])));
+						return false;
+					}
+					if (per_stage_buffers[0] > stats->max_buffers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum serierum per stadio verticis (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_buffers[0])));
+						return false;
+					}
+					if (per_stage_textures[0] > stats->max_textures) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum texturarum per stadio verticis (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_textures[0])));
+						return false;
+					}
+					if (per_stage_samplers[0] > stats->max_samplers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum exceptorum per stadio verticis (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_samplers[0])));
+						return false;
+					}
+					if (per_stage_constants[1] > stats->max_constants) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum constatorum per stadio puncti (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_constants[1])));
+						return false;
+					}
+					if (per_stage_buffers[1] > stats->max_buffers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum serierum per stadio puncti (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_buffers[1])));
+						return false;
+					}
+					if (per_stage_textures[1] > stats->max_textures) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum texturarum per stadio puncti (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_textures[1])));
+						return false;
+					}
+					if (per_stage_samplers[1] > stats->max_samplers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: (error) numerus selectorum exceptorum per stadio puncti (%i) grandis nimium.\n", reinterpret_cast<char *>(intptr(per_stage_samplers[1])));
+						return false;
+					}
+					constants = per_stage_constants[0] + per_stage_constants[1];
+					buffers = per_stage_buffers[0] + per_stage_buffers[1];
+					textures = per_stage_textures[0] + per_stage_textures[1];
+					samplers = per_stage_samplers[0] + per_stage_samplers[1];
+					binding_desc.SetLength(vulkan_desc_max + 1);
+				} catch (...) { return false; }
+				VkDescriptorSetLayoutCreateInfo descriptor_layout_info;
+				VkPipelineLayoutCreateInfo pipeline_layout_info;
+				for (uintptr i = 0; i < binding_desc.GetLength(); i++) {
+					auto & bind = binding_desc[i];
+					uint target = 0;
+					bind.pImmutableSamplers = 0;
+					bind.binding = i;
+					for (auto & m : smap) if (m.value == i) { target = m.key; break; }
+					if (target) {
+						bind.descriptorCount = 1;
+						if ((target & selector_mapping_esse_type_mask) == selector_mapping_esse_type_constant) bind.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+						else if ((target & selector_mapping_esse_type_mask) == selector_mapping_esse_type_buffer) bind.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+						else if ((target & selector_mapping_esse_type_mask) == selector_mapping_esse_type_texture) bind.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+						else if ((target & selector_mapping_esse_type_mask) == selector_mapping_esse_type_sampler) bind.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+						if ((target & selector_mapping_esse_stage_mask) == selector_mapping_esse_stage_vertex) bind.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+						else if ((target & selector_mapping_esse_stage_mask) == selector_mapping_esse_stage_pixel) bind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+					} else {
+						bind.descriptorCount = 0;
+						bind.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+						bind.stageFlags = 0;
+					}
+				}
+				descriptor_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+				descriptor_layout_info.pNext = 0;
+				descriptor_layout_info.flags = 0;
+				descriptor_layout_info.bindingCount = binding_desc.GetLength();
+				descriptor_layout_info.pBindings = binding_desc;
+				pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+				pipeline_layout_info.pNext = 0;
+				pipeline_layout_info.flags = 0;
+				pipeline_layout_info.setLayoutCount = 1;
+				pipeline_layout_info.pSetLayouts = &descriptor_layout;
+				pipeline_layout_info.pushConstantRangeCount = 0;
+				pipeline_layout_info.pPushConstantRanges = 0;
+				if (api->Dispatch.vkCreateDescriptorSetLayout(api->Device, &descriptor_layout_info, &api->Base->Allocator, &descriptor_layout) != VK_SUCCESS) return false;
+				if (api->Dispatch.vkCreatePipelineLayout(api->Device, &pipeline_layout_info, &api->Base->Allocator, &pipeline_layout) != VK_SUCCESS) return false;
+				allocate_descriptor_sizes_length = 0;
+				Memory::ZeroMemory(&allocate_descriptor_sizes, sizeof(allocate_descriptor_sizes));
+				if (constants) {
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].descriptorCount = _vk_descriptor_pool_size * constants;
+					allocate_descriptor_sizes_length++;
+				}
+				if (buffers) {
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].descriptorCount = _vk_descriptor_pool_size * buffers;
+					allocate_descriptor_sizes_length++;
+				}
+				if (textures) {
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].descriptorCount = _vk_descriptor_pool_size * textures;
+					allocate_descriptor_sizes_length++;
+				}
+				if (samplers) {
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].type = VK_DESCRIPTOR_TYPE_SAMPLER;
+					allocate_descriptor_sizes[allocate_descriptor_sizes_length].descriptorCount = _vk_descriptor_pool_size * samplers;
+					allocate_descriptor_sizes_length++;
+				}
+				try {
+					auto pool = owrap(new VKDescriptorAllocator(api));
+					if (!pool->Initialize(allocate_descriptor_sizes, allocate_descriptor_sizes_length)) return false;
+					allocators.Append(pool);
+				} catch (...) { return false; }
+				return true;
+			}
+			bool AllocateDescriptorSet(VkDescriptorSet & set, oref<VKDescriptorAllocator> & pool) noexcept
+			{
+				auto api = stats->api.Inner();
+				for (auto & p : allocators) if (p.state == 1 && p.GetReferenceCount() == 1) {
+					api->Dispatch.vkResetDescriptorPool(api->Device, p.pool, 0);
+					p.allocations = p.state = 0;
+				}
+				VkDescriptorSetAllocateInfo info;
+				info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+				info.pNext = 0;
+				info.pSetLayouts = &descriptor_layout;
+				info.descriptorSetCount = 1;
+				VKDescriptorAllocator * pool_used = 0;
+				VkDescriptorSet result;
+				for (auto & p : allocators) if (p.state == 0) {
+					info.descriptorPool = p.pool;
+					if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &result) == VK_SUCCESS) {
+						pool_used = &p;
+						p.allocations++;
+						if (p.allocations >= _vk_descriptor_pool_size) p.state = 1;
+						break;
+					} else p.state = 1;
+				}
+				if (pool_used) { set = result; pool = pool_used; return true; }
+				oref<VKDescriptorAllocator> new_pool;
+				try {
+					new_pool = owrap(new VKDescriptorAllocator(api));
+					if (!new_pool->Initialize(allocate_descriptor_sizes, allocate_descriptor_sizes_length)) return false;
+					allocators.Append(new_pool);
+				} catch (...) { return false; }
+				info.descriptorPool = new_pool->pool;
+				if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &result) == VK_SUCCESS) { new_pool->allocations++; set = result; pool = new_pool; return true; } else return false;
+			}
+		};
 		class VKPipelineState : public IPipelineState
 		{
 			friend class VKPass;
 			friend class VKQueue;
 			friend class VKDevice;
-			friend class VKDeviceDeferredContext;
-			friend class VKDeviceImmediateContext;
-			friend class VKDeviceContext2D;
 		private:
 			oref<VKDeviceAPI> _api;
+			oref<VKPipelineLayout> _layout;
 			IDevice * _parent;
 			VkPipeline _pipeline;
 		public:
-			VKPipelineState(VKDeviceAPI * api, IDevice * parent) : _api(api), _parent(parent), _pipeline(0) {}
+			VKPipelineState(VKDeviceAPI * api, IDevice * parent, VKPipelineLayout * layout) : _api(api), _parent(parent), _layout(layout), _pipeline(0) {}
 			virtual ~VKPipelineState(void) override { if (_pipeline) _api->Dispatch.vkDestroyPipeline(_api->Device, _pipeline, &_api->Base->Allocator); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"VKPipelineState"; ESSE_TRY_OUTRO(string()) }
 			virtual IDevice * GetParentDevice(void) noexcept override { return _parent; }
+			VKPipelineLayout * GetLayout(void) noexcept { return _layout; }
+			VkPipeline GetPipeline(void) noexcept { return _pipeline; }
 		};
 		class VKSamplerState : public ISamplerState
 		{
@@ -707,6 +1005,7 @@ namespace ESSE
 			virtual ~VKSamplerState(void) override { if (_sampler) _api->Dispatch.vkDestroySampler(_api->Device, _sampler, &_api->Base->Allocator); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"VKSamplerState"; ESSE_TRY_OUTRO(string()) }
 			virtual IDevice * GetParentDevice(void) noexcept override { return _parent; }
+			VkSampler GetSampler(void) noexcept { return _sampler; }
 		};
 		class VKBuffer : public IBuffer
 		{
@@ -736,6 +1035,7 @@ namespace ESSE
 			virtual ResourceMemoryPool GetMemoryPool(void) noexcept override { return _desc.MemoryPool; }
 			virtual uint32 GetResourceUsage(void) noexcept override { return _desc.Usage; }
 			virtual uint32 GetLength(void) noexcept override { return _desc.Length; }
+			VkBuffer GetBuffer(void) noexcept { return _buffer; }
 		};
 		class VKTexture : public ITexture
 		{
@@ -780,6 +1080,8 @@ namespace ESSE
 			virtual uint32 GetDepth(void) noexcept override { return _desc.Type == TextureType::Type3D ? _desc.Depth : 1; }
 			virtual uint32 GetMipmapCount(void) noexcept override { return _desc.MipmapCount; }
 			virtual uint32 GetArraySize(void) noexcept override { return _desc.Type == TextureType::Type3D ? _desc.ArraySize : 1; }
+			VkImageView GetView(void) noexcept { return _view; }
+			VkImageLayout GetLayout(void) noexcept { return _current_layout; }
 		};
 		class VKConstantPool : public VKBuffer
 		{
@@ -799,155 +1101,11 @@ namespace ESSE
 			}
 			static oref<VKConstantPool> Allocate(IDevice * parent_device) noexcept;
 		};
-		class VKLayout : public Object
+		class VKSelectorState : public Object
 		{
 		public:
-			oref<VKDeviceAPI> api;
-			VkPhysicalDevice physical_device;
-			VkDescriptorSetLayout descriptor_layout;
-			VkPipelineLayout pipeline_layout;
-			uint max_constants, max_samplers, max_buffers, max_textures, constant_alignment;
-		public:
-			VKLayout(VKDeviceAPI * device, VkPhysicalDevice physical) : api(device), physical_device(physical), descriptor_layout(0), pipeline_layout(0) {}
-			virtual ~VKLayout(void) override
-			{
-				if (pipeline_layout) api->Dispatch.vkDestroyPipelineLayout(api->Device, pipeline_layout, &api->Base->Allocator);
-				if (descriptor_layout) api->Dispatch.vkDestroyDescriptorSetLayout(api->Device, descriptor_layout, &api->Base->Allocator);
-			}
-			bool Initialize(void) noexcept
-			{
-				VkPhysicalDeviceProperties props;
-				api->Dispatch.vkGetPhysicalDeviceProperties(physical_device, &props);
-				constant_alignment = props.limits.nonCoherentAtomSize;
-				max_constants = min(props.limits.maxPerStageDescriptorUniformBuffers, props.limits.maxDescriptorSetUniformBuffers / 2);
-				max_samplers = min(props.limits.maxPerStageDescriptorSamplers, props.limits.maxDescriptorSetSamplers / 2);
-				max_buffers = min(props.limits.maxPerStageDescriptorStorageBuffers, props.limits.maxDescriptorSetStorageBuffers / 2);
-				max_textures = min(props.limits.maxPerStageDescriptorSampledImages, props.limits.maxDescriptorSetSampledImages / 2);
-				if (max_constants > MaxRuntimePerShaderConstants) max_constants = MaxRuntimePerShaderConstants;
-				if (max_samplers > MaxRuntimePerShaderSamplers) max_samplers = MaxRuntimePerShaderSamplers;
-				if (max_buffers > MaxRuntimePerShaderBuffers) max_buffers = MaxRuntimePerShaderBuffers;
-				if (max_textures > MaxRuntimePerShaderTextures) max_textures = MaxRuntimePerShaderTextures;
-				uint per_stage_slots = max_constants + max_samplers + max_buffers + max_textures;
-				while (per_stage_slots > props.limits.maxPerStageResources) {
-					uint overcap = per_stage_slots - props.limits.maxPerStageResources;
-					if (max_buffers <= 16 || max_textures <= 16) return false;
-					uint buf_overcap = max_buffers - 16;
-					uint tex_overcap = max_textures - 16;
-					if (buf_overcap + overcap <= tex_overcap) max_textures -= overcap;
-					else if (tex_overcap + overcap <= buf_overcap) max_buffers -= overcap;
-					else if (buf_overcap < tex_overcap) max_textures = max_buffers;
-					else if (tex_overcap < buf_overcap) max_buffers = max_textures;
-					else { uint overcap2 = overcap / 2; max_buffers -= overcap2; max_textures -= overcap - overcap2; }
-					per_stage_slots = max_constants + max_samplers + max_buffers + max_textures;
-				}
-				if (max_buffers <= 16 || max_textures <= 16) return false;
-				if (_device_validation_layer) {
-					VKValidationOutput("Vulkan API: numerus selectorum constatorum: %i.\n", reinterpret_cast<char *>(intptr(max_constants)));
-					VKValidationOutput("Vulkan API: numerus selectorum exceptorum: %i.\n", reinterpret_cast<char *>(intptr(max_samplers)));
-					VKValidationOutput("Vulkan API: numerus selectorum serierum: %i.\n", reinterpret_cast<char *>(intptr(max_buffers)));
-					VKValidationOutput("Vulkan API: numerus selectorum texturarum: %i.\n", reinterpret_cast<char *>(intptr(max_textures)));
-				}
-				uint total_slots = 2 * per_stage_slots;
-				array<VkDescriptorSetLayoutBinding> binding_info(1);
-				VkDescriptorSetLayoutCreateInfo descriptor_layout_info;
-				VkPipelineLayoutCreateInfo pipeline_layout_info;
-				try { binding_info.SetLength(total_slots); } catch (...) { return false; }
-				for (auto & b : binding_info) b.pImmutableSamplers = 0;
-				for (uint i = 0; i < max_constants; i++) {
-					uint j = i;
-					binding_info[j].binding = i;
-					binding_info[j + per_stage_slots].binding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers +
-						MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + i;
-					binding_info[j].descriptorType = binding_info[j + per_stage_slots].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-					binding_info[j].descriptorCount = binding_info[j + per_stage_slots].descriptorCount = 1;
-					binding_info[j].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-					binding_info[j + per_stage_slots].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-				}
-				for (uint i = 0; i < max_samplers; i++) {
-					uint j = max_constants + i;
-					binding_info[j].binding = MaxRuntimePerShaderConstants + i;
-					binding_info[j + per_stage_slots].binding = 2 * MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers +
-						MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + i;
-					binding_info[j].descriptorType = binding_info[j + per_stage_slots].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-					binding_info[j].descriptorCount = binding_info[j + per_stage_slots].descriptorCount = 1;
-					binding_info[j].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-					binding_info[j + per_stage_slots].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-				}
-				for (uint i = 0; i < max_buffers; i++) {
-					uint j = max_constants + max_samplers + i;
-					binding_info[j].binding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + i;
-					binding_info[j + per_stage_slots].binding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers +
-						MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + i;
-					binding_info[j].descriptorType = binding_info[j + per_stage_slots].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-					binding_info[j].descriptorCount = binding_info[j + per_stage_slots].descriptorCount = 1;
-					binding_info[j].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-					binding_info[j + per_stage_slots].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-				}
-				for (uint i = 0; i < max_textures; i++) {
-					uint j = max_constants + max_samplers + max_buffers + i;
-					binding_info[j].binding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + i;
-					binding_info[j + per_stage_slots].binding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers +
-						2 * MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + i;
-					binding_info[j].descriptorType = binding_info[j + per_stage_slots].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-					binding_info[j].descriptorCount = binding_info[j + per_stage_slots].descriptorCount = 1;
-					binding_info[j].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-					binding_info[j + per_stage_slots].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-				}
-				descriptor_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-				descriptor_layout_info.pNext = 0;
-				descriptor_layout_info.flags = 0;
-				descriptor_layout_info.bindingCount = binding_info.GetLength();
-				descriptor_layout_info.pBindings = binding_info;
-				pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-				pipeline_layout_info.pNext = 0;
-				pipeline_layout_info.flags = 0;
-				pipeline_layout_info.setLayoutCount = 1;
-				pipeline_layout_info.pSetLayouts = &descriptor_layout;
-				pipeline_layout_info.pushConstantRangeCount = 0;
-				pipeline_layout_info.pPushConstantRanges = 0;
-				if (api->Dispatch.vkCreateDescriptorSetLayout(api->Device, &descriptor_layout_info, &api->Base->Allocator, &descriptor_layout) != VK_SUCCESS) return false;
-				if (api->Dispatch.vkCreatePipelineLayout(api->Device, &pipeline_layout_info, &api->Base->Allocator, &pipeline_layout) != VK_SUCCESS) return false;
-				return true;
-			}
-		};
-		class VKDescriptorPool : public Object
-		{
-		public:
-			oref<VKLayout> layout;
-			VkDescriptorPool pool;
-			uint allocations;
-			uint state; // 0 - usable, 1 - needs reset
-		public:
-			VKDescriptorPool(VKLayout * base) : layout(base), pool(0), allocations(0), state(0) {}
-			virtual ~VKDescriptorPool(void) override { if (pool) layout->api->Dispatch.vkDestroyDescriptorPool(layout->api->Device, pool, &layout->api->Base->Allocator); }
-			bool Initialize(void) noexcept
-			{
-				if (pool) return true;
-				VkDescriptorPoolCreateInfo info;
-				VkDescriptorPoolSize sizes[4];
-				sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-				sizes[0].descriptorCount = 2 * _vk_descriptor_pool_size * layout->max_constants;
-				sizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-				sizes[1].descriptorCount = 2 * _vk_descriptor_pool_size * layout->max_samplers;
-				sizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-				sizes[2].descriptorCount = 2 * _vk_descriptor_pool_size * layout->max_buffers;
-				sizes[3].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-				sizes[3].descriptorCount = 2 * _vk_descriptor_pool_size * layout->max_textures;
-				info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-				info.pNext = 0;
-				info.flags = 0;
-				info.maxSets = _vk_descriptor_pool_size;
-				info.poolSizeCount = 4;
-				info.pPoolSizes = sizes;
-				if (layout->api->Dispatch.vkCreateDescriptorPool(layout->api->Device, &info, &layout->api->Base->Allocator, &pool) != VK_SUCCESS) return false;
-				return true;
-			}
-		};
-		class VKSelectorBuffer : public Object
-		{
-		public:
-			oref<VKDescriptorPool> origin;
-			VkDescriptorSet set;
+			oref<VKPipelineState> state;
+			oref<VKPipelineLayout> layout;
 			VKBuffer		* vertex_constant_buffers		[MaxRuntimePerShaderConstants];
 			VKSamplerState	* vertex_samplers				[MaxRuntimePerShaderSamplers];
 			VKBuffer		* vertex_buffers				[MaxRuntimePerShaderBuffers];
@@ -958,77 +1116,418 @@ namespace ESSE
 			VKTexture		* pixel_textures				[MaxRuntimePerShaderTextures];
 			VkDescriptorBufferInfo vertex_constant_ranges	[MaxRuntimePerShaderConstants];
 			VkDescriptorBufferInfo pixel_constant_ranges	[MaxRuntimePerShaderConstants];
-			uint32 vc_mask, vs_mask, vb_mask[4], vt_mask[4];
-			uint32 pc_mask, ps_mask, pb_mask[4], pt_mask[4];
+			uint32 vc_set_mask, vs_set_mask, vb_set_mask[4], vt_set_mask[4];
+			uint32 pc_set_mask, ps_set_mask, pb_set_mask[4], pt_set_mask[4];
+			uint32 update_pipeline_layout;
 		public:
-			VKSelectorBuffer(void) : set(0), vc_mask(0), vs_mask(0), pc_mask(0), ps_mask(0) { for (int i = 0; i < 4; i++) vb_mask[i] = vt_mask[i] = pb_mask[i] = pt_mask[i] = 0; }
-			VKSelectorBuffer(const VKSelectorBuffer & src) : set(0), vc_mask(src.vc_mask), vs_mask(src.vs_mask), pc_mask(src.pc_mask), ps_mask(src.ps_mask)
+			VKSelectorState(void) : vc_set_mask(0), vs_set_mask(0), pc_set_mask(0), ps_set_mask(0), update_pipeline_layout(0) { for (uint i = 0; i < 4; i++) vb_set_mask[i] = vt_set_mask[i] = pb_set_mask[i] = pt_set_mask[i] = 0; }
+			virtual ~VKSelectorState(void) override
 			{
-				for (int i = 0; i < 4; i++) { vb_mask[i] = src.vb_mask[i]; vt_mask[i] = src.vt_mask[i]; pb_mask[i] = src.pb_mask[i]; pt_mask[i] = src.pt_mask[i]; }
-				for (int i = 0; i < MaxRuntimePerShaderConstants; i++) if (vc_mask & (1U << i)) {
-					vertex_constant_buffers[i] = src.vertex_constant_buffers[i];
-					vertex_constant_ranges[i] = src.vertex_constant_ranges[i];
-					if (vertex_constant_buffers[i]) vertex_constant_buffers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderSamplers; i++) if (vs_mask & (1U << i)) {
-					vertex_samplers[i] = src.vertex_samplers[i];
-					if (vertex_samplers[i]) vertex_samplers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderBuffers; i++) if (vb_mask[i >> 5] & (1U << (i & 0x1F))) {
-					vertex_buffers[i] = src.vertex_buffers[i];
-					if (vertex_buffers[i]) vertex_buffers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderTextures; i++) if (vt_mask[i >> 5] & (1U << (i & 0x1F))) {
-					vertex_textures[i] = src.vertex_textures[i];
-					if (vertex_textures[i]) vertex_textures[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderConstants; i++) if (pc_mask & (1U << i)) {
-					pixel_constant_buffers[i] = src.pixel_constant_buffers[i];
-					pixel_constant_ranges[i] = src.pixel_constant_ranges[i];
-					if (pixel_constant_buffers[i]) pixel_constant_buffers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderSamplers; i++) if (ps_mask & (1U << i)) {
-					pixel_samplers[i] = src.pixel_samplers[i];
-					if (pixel_samplers[i]) pixel_samplers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderBuffers; i++) if (pb_mask[i >> 5] & (1U << (i & 0x1F))) {
-					pixel_buffers[i] = src.pixel_buffers[i];
-					if (pixel_buffers[i]) pixel_buffers[i]->Retain();
-				}
-				for (int i = 0; i < MaxRuntimePerShaderTextures; i++) if (pt_mask[i >> 5] & (1U << (i & 0x1F))) {
-					pixel_textures[i] = src.pixel_textures[i];
-					if (pixel_textures[i]) pixel_textures[i]->Retain();
-				}
+				for (uint i = 0; i < MaxRuntimePerShaderConstants; i++) if (vc_set_mask & (1U << i)) if (vertex_constant_buffers[i]) vertex_constant_buffers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderSamplers; i++) if (vs_set_mask & (1U << i)) if (vertex_samplers[i]) vertex_samplers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderBuffers; i++) if (vb_set_mask[i >> 5] & (1U << (i & 0x1F))) if (vertex_buffers[i]) vertex_buffers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderTextures; i++) if (vt_set_mask[i >> 5] & (1U << (i & 0x1F))) if (vertex_textures[i]) vertex_textures[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderConstants; i++) if (pc_set_mask & (1U << i)) if (pixel_constant_buffers[i]) pixel_constant_buffers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderSamplers; i++) if (ps_set_mask & (1U << i)) if (pixel_samplers[i]) pixel_samplers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderBuffers; i++) if (pb_set_mask[i >> 5] & (1U << (i & 0x1F))) if (pixel_buffers[i]) pixel_buffers[i]->Release();
+				for (uint i = 0; i < MaxRuntimePerShaderTextures; i++) if (pt_set_mask[i >> 5] & (1U << (i & 0x1F))) if (pixel_textures[i]) pixel_textures[i]->Release();
 			}
-			virtual ~VKSelectorBuffer(void) override
+			void UpdatePipeline(IPipelineState * pstate) noexcept
 			{
-				for (int i = 0; i < MaxRuntimePerShaderConstants; i++) if (vc_mask & (1U << i)) if (vertex_constant_buffers[i]) vertex_constant_buffers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderSamplers; i++) if (vs_mask & (1U << i)) if (vertex_samplers[i]) vertex_samplers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderBuffers; i++) if (vb_mask[i >> 5] & (1U << (i & 0x1F))) if (vertex_buffers[i]) vertex_buffers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderTextures; i++) if (vt_mask[i >> 5] & (1U << (i & 0x1F))) if (vertex_textures[i]) vertex_textures[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderConstants; i++) if (pc_mask & (1U << i)) if (pixel_constant_buffers[i]) pixel_constant_buffers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderSamplers; i++) if (ps_mask & (1U << i)) if (pixel_samplers[i]) pixel_samplers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderBuffers; i++) if (pb_mask[i >> 5] & (1U << (i & 0x1F))) if (pixel_buffers[i]) pixel_buffers[i]->Release();
-				for (int i = 0; i < MaxRuntimePerShaderTextures; i++) if (pt_mask[i >> 5] & (1U << (i & 0x1F))) if (pixel_textures[i]) pixel_textures[i]->Release();
+				if (state != pstate) update_pipeline_layout |= 1;
+				state = pstate ? static_cast<VKPipelineState *>(pstate) : 0;
+				if (state) {
+					if (layout.Inner() != state->GetLayout()) {
+						layout = state->GetLayout();
+						update_pipeline_layout |= 2;
+					}
+				} else { layout.Clear(); update_pipeline_layout |= 2; }
+			}
+			void UpdateSelector(uint domain, uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
+			{
+				if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					if (index >= MaxRuntimePerShaderConstants) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris constati falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((vc_set_mask & (1U << index)) && vertex_constant_buffers[index]) vertex_constant_buffers[index]->Release();
+					vc_set_mask |= (1U << index);
+					vertex_constant_buffers[index] = static_cast<VKBuffer *>(object);
+					vertex_constant_ranges[index].buffer = 0;
+					vertex_constant_ranges[index].offset = origin;
+					vertex_constant_ranges[index].range = size;
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_sampler)) {
+					if (index >= MaxRuntimePerShaderSamplers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris exceptoris falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((vs_set_mask & (1U << index)) && vertex_samplers[index]) vertex_samplers[index]->Release();
+					vs_set_mask |= (1U << index);
+					vertex_samplers[index] = static_cast<VKSamplerState *>(object);
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					if (index >= MaxRuntimePerShaderBuffers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris seriei falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((vb_set_mask[index >> 5] & (1U << (index & 0x1F))) && vertex_buffers[index]) vertex_buffers[index]->Release();
+					vb_set_mask[index >> 5] |= (1U << (index & 0x1F));
+					vertex_buffers[index] = static_cast<VKBuffer *>(object);
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					if (index >= MaxRuntimePerShaderTextures) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris texturae falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((vt_set_mask[index >> 5] & (1U << (index & 0x1F))) && vertex_textures[index]) vertex_textures[index]->Release();
+					vt_set_mask[index >> 5] |= (1U << (index & 0x1F));
+					vertex_textures[index] = static_cast<VKTexture *>(object);
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					if (index >= MaxRuntimePerShaderConstants) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris constati falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((pc_set_mask & (1U << index)) && pixel_constant_buffers[index]) pixel_constant_buffers[index]->Release();
+					pc_set_mask |= (1U << index);
+					pixel_constant_buffers[index] = static_cast<VKBuffer *>(object);
+					pixel_constant_ranges[index].buffer = 0;
+					pixel_constant_ranges[index].offset = origin;
+					pixel_constant_ranges[index].range = size;
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_sampler)) {
+					if (index >= MaxRuntimePerShaderSamplers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris exceptoris falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((ps_set_mask & (1U << index)) && pixel_samplers[index]) pixel_samplers[index]->Release();
+					ps_set_mask |= (1U << index);
+					pixel_samplers[index] = static_cast<VKSamplerState *>(object);
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					if (index >= MaxRuntimePerShaderBuffers) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris seriei falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((pb_set_mask[index >> 5] & (1U << (index & 0x1F))) && pixel_buffers[index]) pixel_buffers[index]->Release();
+					pb_set_mask[index >> 5] |= (1U << (index & 0x1F));
+					pixel_buffers[index] = static_cast<VKBuffer *>(object);
+					if (object) object->Retain();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					if (index >= MaxRuntimePerShaderTextures) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris texturae falsa.\n", reinterpret_cast<char *>(intptr(object)));
+						return;
+					}
+					if ((pt_set_mask[index >> 5] & (1U << (index & 0x1F))) && pixel_textures[index]) pixel_textures[index]->Release();
+					pt_set_mask[index >> 5] |= (1U << (index & 0x1F));
+					pixel_textures[index] = static_cast<VKTexture *>(object);
+					if (object) object->Retain();
+				} else abort();
+				update_pipeline_layout |= 2;
+			}
+			void WriteSelectors(VKDeviceAPI * api, uint & index, VkWriteDescriptorSet * write) noexcept { api->Dispatch.vkUpdateDescriptorSets(api->Device, index, write, 0, 0); index = 0; }
+			bool PushSelector(VkDescriptorSet set, Set<ResourceHandle> & retain, uint & index, VkDescriptorImageInfo * image, VkDescriptorBufferInfo * buffer, VkWriteDescriptorSet * write, uint position, uint bind, VKSamplerState * stub_sampler)
+			{
+				uint domain = position & (VKPipelineLayout::selector_mapping_esse_stage_mask | VKPipelineLayout::selector_mapping_esse_type_mask);
+				uint at = (position & VKPipelineLayout::selector_mapping_esse_index_mask) >> 16U;
+				write[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				write[index].pNext = 0;
+				write[index].dstSet = set;
+				write[index].dstArrayElement = 0;
+				write[index].descriptorCount = 1;
+				write[index].pTexelBufferView = 0;
+				write[index].dstBinding = bind;
+				if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					if (!(vc_set_mask & (1U << at)) || !vertex_constant_buffers[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i constati stadii verticum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					buffer[index].buffer = vertex_constant_buffers[at]->GetBuffer();
+					buffer[index].offset = vertex_constant_ranges[at].offset;
+					buffer[index].range = vertex_constant_ranges[at].range;
+					retain.AddElement(vertex_constant_buffers[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					if (!(pc_set_mask & (1U << at)) || !pixel_constant_buffers[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i constati stadii punctorum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					buffer[index].buffer = pixel_constant_buffers[at]->GetBuffer();
+					buffer[index].offset = pixel_constant_ranges[at].offset;
+					buffer[index].range = pixel_constant_ranges[at].range;
+					retain.AddElement(pixel_constant_buffers[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					if (!(vb_set_mask[at >> 5] & (1U << (at & 0x1F))) || !vertex_buffers[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i seriei stadii verticum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					buffer[index].buffer = vertex_buffers[at]->GetBuffer();
+					buffer[index].offset = 0;
+					buffer[index].range = VK_WHOLE_SIZE;
+					retain.AddElement(vertex_buffers[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					if (!(pb_set_mask[at >> 5] & (1U << (at & 0x1F))) || !pixel_buffers[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i seriei stadii punctorum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					buffer[index].buffer = pixel_buffers[at]->GetBuffer();
+					buffer[index].offset = 0;
+					buffer[index].range = VK_WHOLE_SIZE;
+					retain.AddElement(pixel_buffers[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					if (!(vt_set_mask[at >> 5] & (1U << (at & 0x1F))) || !vertex_textures[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i texturae stadii verticum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					image[index].sampler = 0;
+					image[index].imageView = vertex_textures[at]->GetView();
+					image[index].imageLayout = vertex_textures[at]->GetLayout();
+					retain.AddElement(vertex_textures[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					if (!(pt_set_mask[at >> 5] & (1U << (at & 0x1F))) || !pixel_textures[at]) {
+						if (_device_validation_layer) VKValidationOutput("Vulkan API: Selector #%i texturae stadii punctorum requisitum, sed nullum est.\n", reinterpret_cast<char *>(intptr(at)));
+						return false;
+					}
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					image[index].sampler = 0;
+					image[index].imageView = pixel_textures[at]->GetView();
+					image[index].imageLayout = pixel_textures[at]->GetLayout();
+					retain.AddElement(pixel_textures[at]);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_sampler)) {
+					VKSamplerState * sampler;
+					if (!(vs_set_mask & (1U << at)) || !vertex_samplers[at]) sampler = stub_sampler; else sampler = vertex_samplers[at];
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					image[index].sampler = sampler->GetSampler();
+					image[index].imageView = 0;
+					image[index].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+					retain.AddElement(sampler);
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_sampler)) {
+					VKSamplerState * sampler;
+					if (!(ps_set_mask & (1U << at)) || !pixel_samplers[at]) sampler = stub_sampler; else sampler = pixel_samplers[at];
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					image[index].sampler = sampler->GetSampler();
+					image[index].imageView = 0;
+					image[index].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+					retain.AddElement(sampler);
+				} else abort();
+				index++;
+				return true;
+			}
+			bool PushState(VkCommandBuffer command, Set<ResourceHandle> & retain, VKSamplerState * stub_sampler) noexcept
+			{
+				try {
+					auto api = layout->stats->api.Inner();
+					if (update_pipeline_layout & 1) {
+						if (!state) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Requisitum reddendi admissum est, sed status oleiductus nullus est.\n");
+							return false;
+						}
+						retain.AddElement(state.Inner());
+						api->Dispatch.vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, state->GetPipeline());
+					}
+					if (update_pipeline_layout & 2) {
+						if (!layout) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Requisitum reddendi admissum est, sed status oleiductus nullus est.\n");
+							return false;
+						}
+						VkDescriptorSet set;
+						oref<VKDescriptorAllocator> alloc;
+						if (!layout->AllocateDescriptorSet(set, alloc)) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Error allocationis memoriae pro selectoribus.\n");
+							return false;
+						}
+						uint index = 0;
+						VkDescriptorImageInfo image[8];
+						VkDescriptorBufferInfo buffer[8];
+						VkWriteDescriptorSet write[8];
+						for (auto & m : layout->smap) {
+							if (!PushSelector(set, retain, index, image, buffer, write, m.key, m.value, stub_sampler)) return false;
+							if (index == 8) WriteSelectors(api, index, write);
+						}
+						if (index) WriteSelectors(api, index, write);
+						retain.AddElement(alloc.Inner());
+						api->Dispatch.vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, layout->pipeline_layout, 0, 1, &set, 0, 0);
+					}
+					update_pipeline_layout = 0;
+					return true;
+				} catch (...) { return false; }
 			}
 		};
-		class VKSmallSelectorBuffer : public Object
+		class VKSelectorState2D : public Object
 		{
 		public:
-			oref<VKDescriptorPool> origin;
-			VkDescriptorSet set;
+			static constexpr uint selector_constant_global	= 0;
+			static constexpr uint selector_constant_local	= 1;
+			static constexpr uint selector_vertex_buffer	= 0;
+			static constexpr uint selector_color_surface	= 0;
+			static constexpr uint selector_mask_surface		= 1;
+		public:
+			oref<VKPipelineState> state;
+			oref<VKPipelineLayout> layout;
 			oref<VKBuffer> constant_global, constant_local, vertex;
 			oref<VKTexture> surface, mask;
 			VkDescriptorBufferInfo constant_global_range, constant_local_range;
+			uint32 update_pipeline_layout;
 		public:
-			VKSmallSelectorBuffer(void) : set(0) {}
-			VKSmallSelectorBuffer(const VKSmallSelectorBuffer & src) : set(0)
+			VKSelectorState2D(void) : update_pipeline_layout(0) {}
+			virtual ~VKSelectorState2D(void) override {}
+			void UpdatePipeline(IPipelineState * pstate) noexcept
 			{
-				constant_global = src.constant_global; constant_local = src.constant_local;
-				vertex = src.vertex; surface = src.surface; mask = src.mask;
-				constant_global_range = src.constant_global_range; constant_local_range = src.constant_local_range;
+				if (state != pstate) update_pipeline_layout |= 1;
+				state = pstate ? static_cast<VKPipelineState *>(pstate) : 0;
+				if (state) {
+					if (layout.Inner() != state->GetLayout()) {
+						layout = state->GetLayout();
+						update_pipeline_layout |= 2;
+					}
+				} else { layout.Clear(); update_pipeline_layout |= 2; }
 			}
-			virtual ~VKSmallSelectorBuffer(void) override {}
+			void UpdateSelector(uint domain, uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
+			{
+				if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					if (index == selector_constant_global) {
+						constant_global = static_cast<VKBuffer *>(object);
+						constant_global_range.buffer = 0;
+						constant_global_range.offset = origin;
+						constant_global_range.range = size;
+					} else if (index == selector_constant_local) {
+						constant_local = static_cast<VKBuffer *>(object);
+						constant_local_range.buffer = 0;
+						constant_local_range.offset = origin;
+						constant_local_range.range = size;
+					} else abort();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					if (index == selector_vertex_buffer) vertex = static_cast<VKBuffer *>(object);
+					else abort();
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					if (index == selector_color_surface) surface = static_cast<VKTexture *>(object);
+					else if (index == selector_mask_surface) mask = static_cast<VKTexture *>(object);
+					else abort();
+				} else abort();
+				update_pipeline_layout |= 2;
+			}
+			void WriteSelectors(VKDeviceAPI * api, uint & index, VkWriteDescriptorSet * write) noexcept { api->Dispatch.vkUpdateDescriptorSets(api->Device, index, write, 0, 0); index = 0; }
+			bool PushSelector(VkDescriptorSet set, Set<ResourceHandle> & retain, uint & index, VkDescriptorImageInfo * image, VkDescriptorBufferInfo * buffer, VkWriteDescriptorSet * write, uint position, uint bind, VKSamplerState * stub_sampler)
+			{
+				uint domain = position & (VKPipelineLayout::selector_mapping_esse_stage_mask | VKPipelineLayout::selector_mapping_esse_type_mask);
+				uint at = (position & VKPipelineLayout::selector_mapping_esse_index_mask) >> 16U;
+				write[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				write[index].pNext = 0;
+				write[index].dstSet = set;
+				write[index].dstArrayElement = 0;
+				write[index].descriptorCount = 1;
+				write[index].pTexelBufferView = 0;
+				write[index].dstBinding = bind;
+				if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant)) {
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					if (at) {
+						buffer[index].buffer = constant_local->GetBuffer();
+						buffer[index].offset = constant_local_range.offset;
+						buffer[index].range = constant_local_range.range;
+						retain.AddElement(constant_local.Inner());
+					} else {
+						buffer[index].buffer = constant_global->GetBuffer();
+						buffer[index].offset = constant_global_range.offset;
+						buffer[index].range = constant_global_range.range;
+						retain.AddElement(constant_global.Inner());
+					}
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer)) {
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+					write[index].pBufferInfo = buffer + index;
+					write[index].pImageInfo = 0;
+					buffer[index].buffer = vertex->GetBuffer();
+					buffer[index].offset = 0;
+					buffer[index].range = VK_WHOLE_SIZE;
+					retain.AddElement(vertex.Inner());
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture)) {
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					if (at) {
+						image[index].sampler = 0;
+						image[index].imageView = mask->GetView();
+						image[index].imageLayout = mask->GetLayout();
+						retain.AddElement(mask.Inner());
+					} else {
+						image[index].sampler = 0;
+						image[index].imageView = surface->GetView();
+						image[index].imageLayout = surface->GetLayout();
+						retain.AddElement(surface.Inner());
+					}
+				} else if (domain == (VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_sampler)) {
+					write[index].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+					write[index].pBufferInfo = 0;
+					write[index].pImageInfo = image + index;
+					image[index].sampler = stub_sampler->GetSampler();
+					image[index].imageView = 0;
+					image[index].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+					retain.AddElement(stub_sampler);
+				} else abort();
+				index++;
+				return true;
+			}
+			bool PushState(VkCommandBuffer command, Set<ResourceHandle> & retain, VKSamplerState * stub_sampler) noexcept
+			{
+				try {
+					auto api = layout->stats->api.Inner();
+					if (update_pipeline_layout & 1) {
+						if (!state) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Requisitum reddendi admissum est, sed status oleiductus nullus est.\n");
+							return false;
+						}
+						retain.AddElement(state.Inner());
+						api->Dispatch.vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, state->GetPipeline());
+					}
+					if (update_pipeline_layout & 2) {
+						if (!layout) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Requisitum reddendi admissum est, sed status oleiductus nullus est.\n");
+							return false;
+						}
+						VkDescriptorSet set;
+						oref<VKDescriptorAllocator> alloc;
+						if (!layout->AllocateDescriptorSet(set, alloc)) {
+							if (_device_validation_layer) VKValidationOutput("Vulkan API: Error allocationis memoriae pro selectoribus.\n");
+							return false;
+						}
+						uint index = 0;
+						VkDescriptorImageInfo image[8];
+						VkDescriptorBufferInfo buffer[8];
+						VkWriteDescriptorSet write[8];
+						for (auto & m : layout->smap) {
+							if (!PushSelector(set, retain, index, image, buffer, write, m.key, m.value, stub_sampler)) return false;
+							if (index == 8) WriteSelectors(api, index, write);
+						}
+						if (index) WriteSelectors(api, index, write);
+						retain.AddElement(alloc.Inner());
+						api->Dispatch.vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, layout->pipeline_layout, 0, 1, &set, 0, 0);
+					}
+					update_pipeline_layout = 0;
+					return true;
+				} catch (...) { return false; }
+			}
 		};
 		class VKPass : public Object
 		{
@@ -1084,19 +1583,17 @@ namespace ESSE
 		public:
 			Set<ResourceHandle> retain;
 			oref<VKDeviceAPI> api;
-			oref<VKSelectorBuffer> selectors;
-			oref<VKSmallSelectorBuffer> selectors_small;
-			oref<VKLayout> layout;
+			oref<VKDeviceStats> stats;
+			oref<VKSelectorState> state;
 			oref<VKConstantPool> & constant_pool;
 			oref<VKSamplerState> stub_sampler;
-			object_array<VKDescriptorPool> & _allocation_pools;
 			IDevice * parent_device;
 			VkCommandPool pool;
 			VkCommandBuffer buffer;
 			uint queue;
 			int mode, slot;
 		public:
-			VKPass(oref<VKConstantPool> & constant, object_array<VKDescriptorPool> & allocation_pools, VKLayout * pool_layout) : layout(pool_layout), constant_pool(constant), _allocation_pools(allocation_pools), parent_device(0), pool(0), buffer(0), mode(0), slot(-1) {}
+			VKPass(oref<VKConstantPool> & constant, VKDeviceStats * devstat) : constant_pool(constant), stats(devstat), parent_device(0), pool(0), buffer(0), mode(0), slot(-1) {}
 			virtual ~VKPass(void) override { if (buffer) api->Dispatch.vkFreeCommandBuffers(api->Device, pool, 1, &buffer); }
 			bool Initialize(VKDeviceAPI * device_api, IDevice * device, VkCommandPool command_pool, uint queue_index) noexcept
 			{
@@ -1119,138 +1616,6 @@ namespace ESSE
 				if (api->Dispatch.vkBeginCommandBuffer(buffer, &begin) != VK_SUCCESS) return false;
 				return true;
 			}
-			void PushSelector(uint domain, uint index) noexcept
-			{
-				VkDescriptorImageInfo image;
-				VkDescriptorBufferInfo buffer;
-				VkWriteDescriptorSet write;
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = 0;
-				write.dstSet = selectors->set;
-				write.dstArrayElement = 0;
-				write.descriptorCount = 1;
-				write.pTexelBufferView = 0;
-				if (domain == 0 && selectors->vertex_constant_buffers[index]) {
-					write.dstBinding = index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = selectors->vertex_constant_buffers[index]->_buffer;
-					buffer.offset = selectors->vertex_constant_ranges[index].offset;
-					buffer.range = selectors->vertex_constant_ranges[index].range;
-				} else if (domain == 1 && selectors->vertex_samplers[index]) {
-					write.dstBinding = MaxRuntimePerShaderConstants + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = selectors->vertex_samplers[index]->_sampler;
-					image.imageView = 0;
-					image.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				} else if (domain == 2 && selectors->vertex_buffers[index]) {
-					write.dstBinding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = selectors->vertex_buffers[index]->_buffer;
-					buffer.offset = 0;
-					buffer.range = VK_WHOLE_SIZE;
-				} else if (domain == 3 && selectors->vertex_textures[index]) {
-					write.dstBinding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = 0;
-					image.imageView = selectors->vertex_textures[index]->_view;
-					image.imageLayout = selectors->vertex_textures[index]->_current_layout;
-				} else if (domain == 4 && selectors->pixel_constant_buffers[index]) {
-					write.dstBinding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = selectors->pixel_constant_buffers[index]->_buffer;
-					buffer.offset = selectors->pixel_constant_ranges[index].offset;
-					buffer.range = selectors->pixel_constant_ranges[index].range;
-				} else if (domain == 5 && selectors->pixel_samplers[index]) {
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = selectors->pixel_samplers[index]->_sampler;
-					image.imageView = 0;
-					image.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				} else if (domain == 6 && selectors->pixel_buffers[index]) {
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = selectors->pixel_buffers[index]->_buffer;
-					buffer.offset = 0;
-					buffer.range = VK_WHOLE_SIZE;
-				} else if (domain == 7 && selectors->pixel_textures[index]) {
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers + 2 * MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + index;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = 0;
-					image.imageView = selectors->pixel_textures[index]->_view;
-					image.imageLayout = selectors->pixel_textures[index]->_current_layout;
-				} else return;
-				api->Dispatch.vkUpdateDescriptorSets(api->Device, 1, &write, 0, 0);
-			}
-			void PushActiveSelectors(void) noexcept
-			{
-				for (int i = 0; i < layout->max_constants; i++) if (selectors->vc_mask & (1U << i)) PushSelector(0, i);
-				for (int i = 0; i < layout->max_samplers; i++) if (selectors->vs_mask & (1U << i)) PushSelector(1, i);
-				for (int i = 0; i < layout->max_buffers; i++) if (selectors->vb_mask[i >> 5] & (1U << (i & 0x1F))) PushSelector(2, i);
-				for (int i = 0; i < layout->max_textures; i++) if (selectors->vt_mask[i >> 5] & (1U << (i & 0x1F))) PushSelector(3, i);
-				for (int i = 0; i < layout->max_constants; i++) if (selectors->pc_mask & (1U << i)) PushSelector(4, i);
-				for (int i = 0; i < layout->max_samplers; i++) if (selectors->ps_mask & (1U << i)) PushSelector(5, i);
-				for (int i = 0; i < layout->max_buffers; i++) if (selectors->pb_mask[i >> 5] & (1U << (i & 0x1F))) PushSelector(6, i);
-				for (int i = 0; i < layout->max_textures; i++) if (selectors->pt_mask[i >> 5] & (1U << (i & 0x1F))) PushSelector(7, i);
-			}
-			void ReinitializeSelectors(void) noexcept
-			{
-				for (auto & p : _allocation_pools) if (p.state == 1 && p.GetReferenceCount() == 1) {
-					api->Dispatch.vkResetDescriptorPool(api->Device, p.pool, 0);
-					p.allocations = p.state = 0;
-				}
-				VkDescriptorSetAllocateInfo info;
-				info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-				info.pNext = 0;
-				info.descriptorSetCount = 1;
-				VKDescriptorPool * pool_used = 0;
-				VkDescriptorSet set_created;
-				for (auto & p : _allocation_pools) if (p.state == 0) {
-					info.descriptorPool = p.pool;
-					info.pSetLayouts = &p.layout->descriptor_layout;
-					if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &set_created) == VK_SUCCESS) {
-						pool_used = &p;
-						p.allocations++;
-						if (p.allocations >= _vk_descriptor_pool_size) p.state = 1;
-						break;
-					} else p.state = 1;
-				}
-				if (pool_used) {
-					selectors->origin.SetRetain(pool_used);
-					selectors->set = set_created;
-					PushActiveSelectors();
-					return;
-				}
-				oref<VKDescriptorPool> new_pool;
-				try {
-					new_pool = owrap(new VKDescriptorPool(layout));
-					if (!new_pool->Initialize()) return;
-					_allocation_pools.Append(new_pool);
-				} catch (...) { return; }
-				info.descriptorPool = new_pool->pool;
-				info.pSetLayouts = &new_pool->layout->descriptor_layout;
-				if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &set_created) == VK_SUCCESS) {
-					new_pool->allocations++;
-					selectors->origin.SetRetain(new_pool);
-					selectors->set = set_created;
-					PushActiveSelectors();
-				}
-			}
 			bool AllocateConstantBuffer(uint length) noexcept
 			{
 				if (!constant_pool || constant_pool->used + length > constant_pool->allocated) {
@@ -1261,96 +1626,11 @@ namespace ESSE
 				constant_pool->used += length;
 				return true;
 			}
-			void UpdateSelector(uint domain, uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
-			{
-				if (!selectors) return;
-				if (!selectors->set) ReinitializeSelectors();
-				if (!selectors->set) return;
-				if (domain == 0) {
-					if (index >= layout->max_constants) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris constati falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->vc_mask & (1U << index)) && selectors->vertex_constant_buffers[index]) selectors->vertex_constant_buffers[index]->Release();
-					selectors->vc_mask |= (1U << index);
-					selectors->vertex_constant_buffers[index] = static_cast<VKBuffer *>(object);
-					selectors->vertex_constant_ranges[index].buffer = 0;
-					selectors->vertex_constant_ranges[index].offset = origin;
-					selectors->vertex_constant_ranges[index].range = size;
-					if (object) object->Retain();
-				} else if (domain == 1) {
-					if (index >= layout->max_samplers) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris exceptoris falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->vs_mask & (1U << index)) && selectors->vertex_samplers[index]) selectors->vertex_samplers[index]->Release();
-					selectors->vs_mask |= (1U << index);
-					selectors->vertex_samplers[index] = static_cast<VKSamplerState *>(object);
-					if (object) object->Retain();
-				} else if (domain == 2) {
-					if (index >= layout->max_buffers) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris seriei falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->vb_mask[index >> 5] & (1U << (index & 0x1F))) && selectors->vertex_buffers[index]) selectors->vertex_buffers[index]->Release();
-					selectors->vb_mask[index >> 5] |= (1U << (index & 0x1F));
-					selectors->vertex_buffers[index] = static_cast<VKBuffer *>(object);
-					if (object) object->Retain();
-				} else if (domain == 3) {
-					if (index >= layout->max_textures) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris texturae falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->vt_mask[index >> 5] & (1U << (index & 0x1F))) && selectors->vertex_textures[index]) selectors->vertex_textures[index]->Release();
-					selectors->vt_mask[index >> 5] |= (1U << (index & 0x1F));
-					selectors->vertex_textures[index] = static_cast<VKTexture *>(object);
-					if (object) object->Retain();
-				} else if (domain == 4) {
-					if (index >= layout->max_constants) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris constati falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->pc_mask & (1U << index)) && selectors->pixel_constant_buffers[index]) selectors->pixel_constant_buffers[index]->Release();
-					selectors->pc_mask |= (1U << index);
-					selectors->pixel_constant_buffers[index] = static_cast<VKBuffer *>(object);
-					selectors->pixel_constant_ranges[index].buffer = 0;
-					selectors->pixel_constant_ranges[index].offset = origin;
-					selectors->pixel_constant_ranges[index].range = size;
-					if (object) object->Retain();
-				} else if (domain == 5) {
-					if (index >= layout->max_samplers) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris exceptoris falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->ps_mask & (1U << index)) && selectors->pixel_samplers[index]) selectors->pixel_samplers[index]->Release();
-					selectors->ps_mask |= (1U << index);
-					selectors->pixel_samplers[index] = static_cast<VKSamplerState *>(object);
-					if (object) object->Retain();
-				} else if (domain == 6) {
-					if (index >= layout->max_buffers) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris seriei falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->pb_mask[index >> 5] & (1U << (index & 0x1F))) && selectors->pixel_buffers[index]) selectors->pixel_buffers[index]->Release();
-					selectors->pb_mask[index >> 5] |= (1U << (index & 0x1F));
-					selectors->pixel_buffers[index] = static_cast<VKBuffer *>(object);
-					if (object) object->Retain();
-				} else if (domain == 7) {
-					if (index >= layout->max_textures) {
-						if (_device_validation_layer) VKValidationOutput("Vulkan API: Index #%i selectoris texturae falsa.\n", reinterpret_cast<char *>(intptr(object)));
-						return;
-					}
-					if ((selectors->pt_mask[index >> 5] & (1U << (index & 0x1F))) && selectors->pixel_textures[index]) selectors->pixel_textures[index]->Release();
-					selectors->pt_mask[index >> 5] |= (1U << (index & 0x1F));
-					selectors->pixel_textures[index] = static_cast<VKTexture *>(object);
-					if (object) object->Retain();
-				} else return;
-				PushSelector(domain, index);
-			}
 			void UpdateSelectorConstant(uint domain, uint index, const void * data, int length) noexcept
 			{
+				if (!state) return;
 				uint align = length;
-				if (align & (layout->constant_alignment - 1)) { align &= ~(layout->constant_alignment - 1); align += layout->constant_alignment; }
+				if (align & (stats->constant_alignment - 1)) { align &= ~(stats->constant_alignment - 1); align += stats->constant_alignment; }
 				if (length <= _vk_constant_buffer_size && AllocateConstantBuffer(align)) {
 					uint origin = constant_pool->offset;
 					Memory::MemoryCopy(constant_pool->memory_mapping + origin, data, length);
@@ -1361,7 +1641,7 @@ namespace ESSE
 					range.offset = origin;
 					range.size = align;
 					api->Dispatch.vkFlushMappedMemoryRanges(api->Device, 1, &range);
-					UpdateSelector(domain, index, constant_pool, origin, align);
+					state->UpdateSelector(domain, index, constant_pool, origin, align);
 				} else {
 					BufferDesc desc;
 					desc.Usage = ResourceUsageConstantBuffer;
@@ -1370,18 +1650,9 @@ namespace ESSE
 					ResourceInitDesc init;
 					init.Data = data;
 					auto buffer = parent_device->CreateBufferWithData(desc, init);
-					if (buffer) UpdateSelector(domain, index, buffer);
+					if (buffer) state->UpdateSelector(domain, index, buffer);
 					else if (_device_validation_layer) VKValidationOutput("Vulkan API: allocatio constatorum falsa.\n");
 				}
-			}
-			void CommitSelectors(void) noexcept
-			{
-				if (!selectors || !selectors->set) return;
-				if (!selectors->vs_mask && (selectors->vt_mask[0] || selectors->vt_mask[1] || selectors->vt_mask[2] || selectors->vt_mask[3])) UpdateSelector(1, 0, stub_sampler);
-				if (!selectors->ps_mask && (selectors->pt_mask[0] || selectors->pt_mask[1] || selectors->pt_mask[2] || selectors->pt_mask[3])) UpdateSelector(5, 0, stub_sampler);
-				try { retain.AddElement(selectors.Inner()); } catch (...) { return; }
-				api->Dispatch.vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout->pipeline_layout, 0, 1, &selectors->set, 0, 0);
-				selectors = owrap(new (std::nothrow) VKSelectorBuffer(*selectors));
 			}
 			void MakeDestinationLayoutTransition(VKTexture * texture, VkImageMemoryBarrier & barrier, VkImageLayout layout) noexcept
 			{
@@ -1450,7 +1721,7 @@ namespace ESSE
 			}
 			bool BeginRenderingPass(uint32 rtc, const RenderTargetViewDesc * rtv, const DepthStencilViewDesc * dsv) noexcept
 			{
-				auto subpass_selectors = owrap(new (std::nothrow) VKSelectorBuffer);
+				auto subpass_selectors = owrap(new (std::nothrow) VKSelectorState);
 				if (!subpass_selectors) return false;
 				VkMemoryBarrier barrier;
 				VkImageMemoryBarrier image_barrier[9];
@@ -1549,15 +1820,11 @@ namespace ESSE
 				}
 				api->Dispatch.vkCmdBeginRenderingKHR(buffer, &rendering);
 				mode = 1;
-				selectors = subpass_selectors;
+				state = subpass_selectors;
 				return true;
 			}
-			void EndRenderingPass(void) noexcept { api->Dispatch.vkCmdEndRenderingKHR(buffer); selectors.Clear(); }
-			void SetRenderingPipelineState(IPipelineState * state) noexcept
-			{
-				try { retain.AddElement(state); } catch (...) { return; }
-				api->Dispatch.vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(state)->_pipeline);
-			}
+			void EndRenderingPass(void) noexcept { api->Dispatch.vkCmdEndRenderingKHR(buffer); state.Clear(); }
+			void SetRenderingPipelineState(IPipelineState * pstate) noexcept { if (state) state->UpdatePipeline(pstate); }
 			void SetViewport(float top_left_x, float top_left_y, float width, float height, float min_depth, float max_depth) noexcept
 			{
 				VkRect2D scissors;
@@ -1577,48 +1844,52 @@ namespace ESSE
 			}
 			void SetVertexShaderResource(uint32 at, IDeviceResource * resource) noexcept
 			{
+				if (!state) return;
 				if (resource) {
 					#ifdef ESSE_DEBUG
 					if (!(resource->GetResourceUsage() & ResourceUsageShaderRead) && _device_validation_layer) VKValidationOutput("Vulkan API: adnectio auxilii falsa - permissio legendi nulla.\n");
 					#endif
-					if (resource->GetResourceType() == ResourceType::Buffer) UpdateSelector(2, at, resource);
-					else if (resource->GetResourceType() == ResourceType::Texture) UpdateSelector(3, at, resource);
+					if (resource->GetResourceType() == ResourceType::Buffer) state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, at, resource);
+					else if (resource->GetResourceType() == ResourceType::Texture) state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_texture, at, resource);
 				} else {
-					UpdateSelector(2, at, 0);
-					UpdateSelector(3, at, 0);
+					state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, at, 0);
+					state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_texture, at, 0);
 				}
 			}
 			void SetVertexShaderConstant(uint32 at, IBuffer * buffer) noexcept
 			{
+				if (!state) return;
 				#ifdef ESSE_DEBUG
 				if (!(buffer->GetResourceUsage() & ResourceUsageConstantBuffer) && _device_validation_layer) VKValidationOutput("Vulkan API: adnectio constati falsa.\n");
 				#endif
-				UpdateSelector(0, at, buffer);
+				state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, at, buffer);
 			}
-			void SetVertexShaderConstant(uint32 at, const void * data, int length) noexcept { UpdateSelectorConstant(0, at, data, length); }
-			void SetVertexShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept { UpdateSelector(1, at, sampler); }
+			void SetVertexShaderConstant(uint32 at, const void * data, int length) noexcept { UpdateSelectorConstant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, at, data, length); }
+			void SetVertexShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept { if (!state) return; state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_sampler, at, sampler); }
 			void SetPixelShaderResource(uint32 at, IDeviceResource * resource) noexcept
 			{
+				if (!state) return;
 				if (resource) {
 					#ifdef ESSE_DEBUG
 					if (!(resource->GetResourceUsage() & ResourceUsageShaderRead) && _device_validation_layer) VKValidationOutput("Vulkan API: adnectio auxilii falsa - permissio legendi nulla.\n");
 					#endif
-					if (resource->GetResourceType() == ResourceType::Buffer) UpdateSelector(6, at, resource);
-					else if (resource->GetResourceType() == ResourceType::Texture) UpdateSelector(7, at, resource);
+					if (resource->GetResourceType() == ResourceType::Buffer) state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_buffer, at, resource);
+					else if (resource->GetResourceType() == ResourceType::Texture) state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, at, resource);
 				} else {
-					UpdateSelector(6, at, 0);
-					UpdateSelector(7, at, 0);
+					state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_buffer, at, 0);
+					state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, at, 0);
 				}
 			}
 			void SetPixelShaderConstant(uint32 at, IBuffer * buffer) noexcept
 			{
+				if (!state) return;
 				#ifdef ESSE_DEBUG
 				if (!(buffer->GetResourceUsage() & ResourceUsageConstantBuffer) && _device_validation_layer) VKValidationOutput("Vulkan API: adnectio constati falsa.\n");
 				#endif
-				UpdateSelector(4, at, buffer);
+				state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_constant, at, buffer);
 			}
-			void SetPixelShaderConstant(uint32 at, const void * data, int length) noexcept { UpdateSelectorConstant(4, at, data, length); }
-			void SetPixelShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept { UpdateSelector(5, at, sampler); }
+			void SetPixelShaderConstant(uint32 at, const void * data, int length) noexcept { UpdateSelectorConstant(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_constant, at, data, length); }
+			void SetPixelShaderSamplerState(uint32 at, ISamplerState * sampler) noexcept { if (!state) return; state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_sampler, at, sampler); }
 			void SetIndexBuffer(IBuffer * index, IndexBufferFormat format) noexcept
 			{
 				#ifdef ESSE_DEBUG
@@ -1640,22 +1911,34 @@ namespace ESSE
 			void SetStencilReferenceValue(uint8 ref) noexcept { api->Dispatch.vkCmdSetStencilReference(buffer, VK_STENCIL_FACE_FRONT_AND_BACK, ref); }
 			void DrawPrimitives(uint32 vertex_count, uint32 first_vertex) noexcept
 			{
-				CommitSelectors();
+				if (!state || !state->PushState(buffer, retain, stub_sampler)) {
+					if (_device_validation_layer) VKValidationOutput("Vulkan API: Error emissionis selectorum: cancello reddendum.\n");
+					return;
+				}
 				api->Dispatch.vkCmdDraw(buffer, vertex_count, 1, first_vertex, 0);
 			}
 			void DrawInstancedPrimitives(uint32 vertex_count, uint32 first_vertex, uint32 instance_count, uint32 first_instance) noexcept
 			{
-				CommitSelectors();
+				if (!state || !state->PushState(buffer, retain, stub_sampler)) {
+					if (_device_validation_layer) VKValidationOutput("Vulkan API: Error emissionis selectorum: cancello reddendum.\n");
+					return;
+				}
 				api->Dispatch.vkCmdDraw(buffer, vertex_count, instance_count, first_vertex, first_instance);
 			}
 			void DrawIndexedPrimitives(uint32 index_count, uint32 first_index, uint32 base_vertex) noexcept
 			{
-				CommitSelectors();
+				if (!state || !state->PushState(buffer, retain, stub_sampler)) {
+					if (_device_validation_layer) VKValidationOutput("Vulkan API: Error emissionis selectorum: cancello reddendum.\n");
+					return;
+				}
 				api->Dispatch.vkCmdDrawIndexed(buffer, index_count, 1, first_index, base_vertex, 0);
 			}
 			void DrawIndexedInstancedPrimitives(uint32 index_count, uint32 first_index, uint32 base_vertex, uint32 instance_count, uint32 first_instance) noexcept
 			{
-				CommitSelectors();
+				if (!state || !state->PushState(buffer, retain, stub_sampler)) {
+					if (_device_validation_layer) VKValidationOutput("Vulkan API: Error emissionis selectorum: cancello reddendum.\n");
+					return;
+				}
 				api->Dispatch.vkCmdDrawIndexed(buffer, index_count, instance_count, first_index, base_vertex, first_instance);
 			}
 			void GenerateMipmaps(ITexture * texture) noexcept
@@ -1955,9 +2238,8 @@ namespace ESSE
 			VkQueue _queue;
 			VkCommandPool _pool;
 			oref<VKDeviceAPI> _api;
-			oref<VKLayout> _layout;
+			oref<VKDeviceStats> _stats;
 			oref<VKSamplerState> _stub_sampler;
-			object_array<VKDescriptorPool> _allocation_pools;
 			oref<VKConstantPool> _constant_pool;
 			volatile bool * _valid;
 			uint _queue_index;
@@ -1990,18 +2272,13 @@ namespace ESSE
 				return state;
 			}
 		public:
-			VKQueue(IDevice * parent) : _parent_device(parent), _queue(0), _pool(0), _allocation_pools(0x40), _valid(0), _circular(0), _completion(_vk_submission_slots), _submitted(_vk_submission_slots) {}
+			VKQueue(IDevice * parent, VKDeviceStats * stats) : _parent_device(parent), _stats(stats), _queue(0), _pool(0), _valid(0), _circular(0), _completion(_vk_submission_slots), _submitted(_vk_submission_slots) {}
 			virtual ~VKQueue(void) override { for (auto & f : _completion) if (f) _api->Dispatch.vkDestroyFence(_api->Device, f, &_api->Base->Allocator); }
-			bool Initialize(VKDeviceAPI * api, VkQueue queue, VkCommandPool pool, VKLayout * layout, uint queue_index, volatile bool * valid) noexcept
+			bool Initialize(VKDeviceAPI * api, VkQueue queue, VkCommandPool pool, uint queue_index, volatile bool * valid) noexcept
 			{
 				_api = api; _valid = valid; _queue_index = queue_index;
-				_queue = queue; _pool = pool; _layout = layout;
-				try {
-					auto pool = owrap(new VKDescriptorPool(layout));
-					if (!pool->Initialize()) return false;
-					_allocation_pools.Append(pool);
-					for (int i = 0; i < _vk_submission_slots; i++) { _submitted.Append(0); _completion.Append(0); }
-				} catch (...) { return false; }
+				_queue = queue; _pool = pool;
+				try { for (int i = 0; i < _vk_submission_slots; i++) { _submitted.Append(0); _completion.Append(0); } } catch (...) { return false; }
 				for (uintptr i = 0; i < _completion.GetLength(); i++) {
 					VkFence fence;
 					VkFenceCreateInfo fence_info;
@@ -2018,13 +2295,12 @@ namespace ESSE
 			void Finalize(void) noexcept
 			{
 				_api->Dispatch.vkQueueWaitIdle(_queue);
-				_layout.Clear(); _allocation_pools.Clear();
 				_constant_pool.Clear(); _submitted.Clear();
 				_swapchains_retained.Clear();
 			}
 			oref<VKPass> CreatePass(void) noexcept
 			{
-				auto pass = owrap(new (std::nothrow) VKPass(_constant_pool, _allocation_pools, _layout));
+				auto pass = owrap(new (std::nothrow) VKPass(_constant_pool, _stats));
 				if (!pass || !pass->Initialize(_api, _parent_device, _pool, _queue_index)) return 0;
 				pass->stub_sampler = _stub_sampler;
 				return pass;
@@ -2906,14 +3182,14 @@ namespace ESSE
 			Stack<VKViewportDesc> _viewports;
 			oref<VK2DCommonResources> _common;
 			oref<ITexture> _main_destination, _current_destination, _blur_backstage;
-			oref<VKSmallSelectorBuffer> _selectors;
+			oref<VKSelectorState2D> _state;
 			oref<IDeviceContext2D> _measure_context;
 			oref<VKTextureHeap> _heap;
 		private:
 			void _finalize(void) noexcept
 			{
 				_current_pass = 0;
-				_selectors.Clear();
+				_state.Clear();
 				_common.Clear();
 				_main_destination.Clear();
 				_current_destination.Clear();
@@ -2984,148 +3260,10 @@ namespace ESSE
 				init.Data = data;
 				return device->CreateBufferWithData(desc, init);
 			}
-			void _push_selector(uint index) noexcept
-			{
-				VkDescriptorImageInfo image;
-				VkDescriptorBufferInfo buffer;
-				VkWriteDescriptorSet write;
-				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				write.pNext = 0;
-				write.dstSet = _selectors->set;
-				write.dstArrayElement = 0;
-				write.descriptorCount = 1;
-				write.pTexelBufferView = 0;
-				if (index == 0) {
-					if (!_selectors->constant_global) return;
-					write.dstBinding = 0;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = _selectors->constant_global->_buffer;
-					buffer.offset = _selectors->constant_global_range.offset;
-					buffer.range = _selectors->constant_global_range.range;
-				} else if (index == 1) {
-					if (!_selectors->constant_local) return;
-					write.dstBinding = 1;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = _selectors->constant_local->_buffer;
-					buffer.offset = _selectors->constant_local_range.offset;
-					buffer.range = _selectors->constant_local_range.range;
-				} else if (index == 2) {
-					if (!_selectors->vertex) return;
-					write.dstBinding = MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-					write.pBufferInfo = &buffer;
-					write.pImageInfo = 0;
-					buffer.buffer = _selectors->vertex->_buffer;
-					buffer.offset = 0;
-					buffer.range = VK_WHOLE_SIZE;
-				} else if (index == 3) {
-					if (!_selectors->surface) return;
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers + 2 * MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = 0;
-					image.imageView = _selectors->surface->_view;
-					image.imageLayout = _selectors->surface->_current_layout;
-				} else if (index == 4) {
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + MaxRuntimePerShaderSamplers + MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = _current_pass->stub_sampler->_sampler;
-					image.imageView = 0;
-					image.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				} else if (index == 5) {
-					if (!_selectors->mask) return;
-					write.dstBinding = 2 * MaxRuntimePerShaderConstants + 2 * MaxRuntimePerShaderSamplers + 2 * MaxRuntimePerShaderBuffers + MaxRuntimePerShaderTextures + 1;
-					write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-					write.pBufferInfo = 0;
-					write.pImageInfo = &image;
-					image.sampler = 0;
-					image.imageView = _selectors->mask->_view;
-					image.imageLayout = _selectors->mask->_current_layout;
-				} else return;
-				auto api = _queue->GetAPI();
-				api->Dispatch.vkUpdateDescriptorSets(api->Device, 1, &write, 0, 0);
-			}
-			void _reinitialize_selectors(void) noexcept
-			{
-				auto api = _queue->GetAPI();
-				for (auto & p : _current_pass->_allocation_pools) if (p.state == 1 && p.GetReferenceCount() == 1) {
-					api->Dispatch.vkResetDescriptorPool(api->Device, p.pool, 0);
-					p.allocations = p.state = 0;
-				}
-				VkDescriptorSetAllocateInfo info;
-				info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-				info.pNext = 0;
-				info.descriptorSetCount = 1;
-				VKDescriptorPool * pool_used = 0;
-				VkDescriptorSet set_created;
-				for (auto & p : _current_pass->_allocation_pools) if (p.state == 0) {
-					info.descriptorPool = p.pool;
-					info.pSetLayouts = &p.layout->descriptor_layout;
-					if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &set_created) == VK_SUCCESS) {
-						pool_used = &p;
-						p.allocations++;
-						if (p.allocations >= _vk_descriptor_pool_size) p.state = 1;
-						break;
-					} else p.state = 1;
-				}
-				if (pool_used) {
-					_selectors->origin.SetRetain(pool_used);
-					_selectors->set = set_created;
-					return;
-				}
-				oref<VKDescriptorPool> new_pool;
-				try {
-					new_pool = owrap(new VKDescriptorPool(_current_pass->layout));
-					if (!new_pool->Initialize()) return;
-					_current_pass->_allocation_pools.Append(new_pool);
-				} catch (...) { return; }
-				info.descriptorPool = new_pool->pool;
-				info.pSetLayouts = &new_pool->layout->descriptor_layout;
-				if (api->Dispatch.vkAllocateDescriptorSets(api->Device, &info, &set_created) == VK_SUCCESS) {
-					new_pool->allocations++;
-					_selectors->origin.SetRetain(new_pool);
-					_selectors->set = set_created;
-				}
-			}
-			bool _update_selector(uint index, Object * object, VkDeviceSize origin = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept
-			{
-				if (!_selectors) return false;
-				if (!_selectors->set) _reinitialize_selectors();
-				if (!_selectors->set) return false;
-				if (index == 0) {
-					_selectors->constant_global.SetRetain(static_cast<VKBuffer *>(object));
-					_selectors->constant_global_range.offset = origin;
-					_selectors->constant_global_range.range = size;
-					_selectors->constant_global_range.buffer = 0;
-					return true;
-				} else if (index == 1) {
-					_selectors->constant_local.SetRetain(static_cast<VKBuffer *>(object));
-					_selectors->constant_local_range.offset = origin;
-					_selectors->constant_local_range.range = size;
-					_selectors->constant_local_range.buffer = 0;
-					return true;
-				} else if (index == 2) {
-					_selectors->vertex.SetRetain(static_cast<VKBuffer *>(object));
-					return true;
-				} else if (index == 3) {
-					_selectors->surface.SetRetain(static_cast<VKTexture *>(object));
-					return true;
-				} else if (index == 5) {
-					_selectors->mask.SetRetain(static_cast<VKTexture *>(object));
-					return true;
-				} else return false;
-			}
-			bool _update_selector_constant(uint index, const void * data, int length) noexcept
+			bool _update_selector_constant(uint domain, uint index, const void * data, int length) noexcept
 			{
 				uint align = length;
-				if (align & (_current_pass->layout->constant_alignment - 1)) { align &= ~(_current_pass->layout->constant_alignment - 1); align += _current_pass->layout->constant_alignment; }
+				if (align & (_current_pass->stats->constant_alignment - 1)) { align &= ~(_current_pass->stats->constant_alignment - 1); align += _current_pass->stats->constant_alignment; }
 				if (_current_pass->AllocateConstantBuffer(align)) {
 					uint origin = _current_pass->constant_pool->offset;
 					Memory::MemoryCopy(_current_pass->constant_pool->memory_mapping + origin, data, length);
@@ -3137,18 +3275,9 @@ namespace ESSE
 					range.size = align;
 					auto api = _queue->GetAPI();
 					api->Dispatch.vkFlushMappedMemoryRanges(api->Device, 1, &range);
-					return _update_selector(index, _current_pass->constant_pool, origin, align);
+					_state->UpdateSelector(domain, index, _current_pass->constant_pool, origin, align);
+					return true;
 				} else return false;
-			}
-			bool _commit_selectors(void) noexcept
-			{
-				if (!_selectors || !_selectors->set) return false;
-				for (int i = 0; i <= 5; i++) _push_selector(i);
-				try { _current_pass->retain.AddElement(_selectors.Inner()); } catch (...) { return false; }
-				auto api = _queue->GetAPI();
-				api->Dispatch.vkCmdBindDescriptorSets(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _current_pass->layout->pipeline_layout, 0, 1, &_selectors->set, 0, 0);
-				_selectors = owrap(new (std::nothrow) VKSmallSelectorBuffer(*_selectors));
-				return true;
 			}
 			bool _resume_rendering(TextureLoadAction load, const float * clear_color) noexcept
 			{
@@ -3224,7 +3353,8 @@ namespace ESSE
 				scissors.extent.height = current_clipping.bottom - current_clipping.top;
 				api->Dispatch.vkCmdSetViewportWithCountEXT(_current_pass->buffer, 1, &viewport);
 				api->Dispatch.vkCmdSetScissorWithCountEXT(_current_pass->buffer, 1, &scissors);
-				_update_selector_constant(0, &current_viewport, sizeof(current_viewport));
+				_state->update_pipeline_layout = 3;
+				_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_global, &current_viewport, sizeof(current_viewport));
 				return true;
 			}
 			void _stop_rendering(void) noexcept
@@ -3674,10 +3804,9 @@ namespace ESSE
 					_resume_rendering(TextureLoadAction::Load, 0);
 					if (l->_blend_alpha) {
 						auto api = _queue->GetAPI();
-						VkPipeline pipeline;
-						if (mode == 3) pipeline = static_cast<VKPipelineState *>(_common->main_double_alpha_state.Inner())->_pipeline;
-						else pipeline = static_cast<VKPipelineState *>(_common->main_alpha_state.Inner())->_pipeline;
-						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+						IPipelineState * pipeline;
+						if (mode == 3) pipeline = _common->main_double_alpha_state; else pipeline = _common->main_alpha_state;
+						_state->UpdatePipeline(pipeline);
 						VKDrawDesc draw;
 						draw.left = l->_position.left;
 						draw.top = l->_position.top;
@@ -3687,11 +3816,11 @@ namespace ESSE
 						draw.dv = l->_position.bottom - l->_position.top;
 						draw.index = 0;
 						draw.alpha = l->_blend_alpha;
-						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
-						if (!_update_selector(2, _common->area)) return;
-						if (!_update_selector(3, l->_surface)) return;
-						if (mode == 3) if (!_update_selector(5, l->_surface_mask)) return;
-						if (!_commit_selectors()) return;
+						if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, _common->area);
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, l->_surface);
+						if (mode == 3) _state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_mask_surface, l->_surface_mask);
+						if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) return;
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 					}
 				}
@@ -3725,7 +3854,7 @@ namespace ESSE
 						float yc4 = ((at.right - ox) * sx + (at.bottom - oy) * sy) / n;
 						float ymx = abs(max(max(yc1, yc2), max(yc3, yc4)));
 						float ymn = abs(min(min(yc1, yc2), min(yc3, yc4)));
-						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->gradient_state.Inner())->_pipeline);
+						_state->UpdatePipeline(_common->gradient_state);
 						VKGradientDesc grad;
 						grad.from_x = b->_from.x;
 						grad.from_y = b->_from.y;
@@ -3735,14 +3864,14 @@ namespace ESSE
 						grad.side_y = sy;
 						grad.extent_x = max(xmx, xmn) + 0.01f;
 						grad.extent_y = max(ymx, ymn) + 0.01f;
-						if (!_update_selector_constant(1, &grad, sizeof(grad))) { PopClip(); return; }
-						if (!_update_selector(2, b->_area)) { PopClip(); return; }
-						if (!_update_selector(3, _common->white)) { PopClip(); return; }
-						if (!_commit_selectors()) { PopClip(); return; }
+						if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &grad, sizeof(grad))) { PopClip(); return; }
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, b->_area);
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, _common->white);
+						if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) { PopClip(); return; }
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 						PopClip();
 					} else {
-						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->main_alpha_state.Inner())->_pipeline);
+						_state->UpdatePipeline(_common->main_alpha_state);
 						VKDrawDesc draw;
 						draw.left = at.left;
 						draw.top = at.top;
@@ -3750,23 +3879,23 @@ namespace ESSE
 						draw.bottom = at.bottom;
 						draw.du = draw.dv = draw.index = 0;
 						draw.alpha = 1.0f;
-						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
-						if (!_update_selector(2, b->_area)) return;
-						if (!_update_selector(3, _common->white)) return;
-						if (!_commit_selectors()) return;
+						if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, b->_area);
+						_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, _common->white);
+						if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) return;
 						api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 					}
 				} else if (type == BrushType::Bitmap) {
 					auto b = static_cast<VKBitmapBrush *>(brush);
 					if (b->_tile) {
-						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->tile_state.Inner())->_pipeline);
+						_state->UpdatePipeline(_common->tile_state);
 						VKTileDesc draw;
 						draw.at = at;
 						draw.tref = b->_tile_ref_box;
 						draw.irect = b->_tile_image_box;
-						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+						if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
 					} else {
-						api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, b->_alpha ? static_cast<VKPipelineState *>(_common->main_alpha_state.Inner())->_pipeline : static_cast<VKPipelineState *>(_common->main_opaque_state.Inner())->_pipeline);
+						_state->UpdatePipeline(b->_alpha ? _common->main_alpha_state : _common->main_opaque_state);
 						VKDrawDesc draw;
 						draw.left = at.left;
 						draw.top = at.top;
@@ -3776,11 +3905,11 @@ namespace ESSE
 						draw.dv = 1;
 						draw.index = 0;
 						draw.alpha = 1.0f;
-						if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
+						if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
 					}
-					if (!_update_selector(2, b->_area)) return;
-					if (!_update_selector(3, b->_surface)) return;
-					if (!_commit_selectors()) return;
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, b->_area);
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, b->_surface);
+					if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, b->_vertex_count, 1, 0, 0);
 				} else if (type == BrushType::Blur) {
 					auto b = static_cast<VKBlurEffectBrush *>(brush);
@@ -3910,7 +4039,7 @@ namespace ESSE
 						}
 					}
 					_resume_rendering(TextureLoadAction::Load, 0);
-					api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->blur_state.Inner())->_pipeline);
+					_state->UpdatePipeline(_common->blur_state);
 					VKDrawDesc draw;
 					draw.left = at.left;
 					draw.top = at.top;
@@ -3920,13 +4049,13 @@ namespace ESSE
 					draw.dv = mip_size.y;
 					draw.index = effective_lod;
 					draw.alpha = effective_sigma;
-					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
-					if (!_update_selector(2, _common->area)) return;
-					if (!_update_selector(3, _blur_backstage)) return;
-					if (!_commit_selectors()) return;
+					if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, _common->area);
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, _blur_backstage);
+					if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 				} else if (type == BrushType::Inversion) {
-					api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->invert_state.Inner())->_pipeline);
+					_state->UpdatePipeline(_common->invert_state);
 					VKDrawDesc draw;
 					draw.left = at.left;
 					draw.top = at.top;
@@ -3934,10 +4063,10 @@ namespace ESSE
 					draw.bottom = at.bottom;
 					draw.du = draw.dv = draw.index = 0;
 					draw.alpha = 1.0f;
-					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
-					if (!_update_selector(2, _common->area)) return;
-					if (!_update_selector(3, _common->white)) return;
-					if (!_commit_selectors()) return;
+					if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, _common->area);
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, _common->white);
+					if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler)) return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 				}
 			}
@@ -4019,14 +4148,14 @@ namespace ESSE
 				}
 				if (r->_surface && new_view.right > new_view.left && new_view.bottom > new_view.top) {
 					auto api = _queue->GetAPI();
-					api->Dispatch.vkCmdBindPipeline(_current_pass->buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VKPipelineState *>(_common->tile_state.Inner())->_pipeline);
+					_state->UpdatePipeline(_common->tile_state);
 					VKTileDesc draw;
 					draw.at = draw.tref = Rectangle(r->_current_view.left + at.x, r->_current_view.top + at.y, r->_current_view.right + at.x, r->_current_view.bottom + at.y);
 					draw.irect = Rectangle(r->_surface->_x, r->_surface->_y, r->_surface->_x + r->_surface->_width, r->_surface->_y + r->_surface->_height);
-					if (!_update_selector_constant(1, &draw, sizeof(draw))) return;
-					if (!_update_selector(2, _common->area)) return;
-					if (!_update_selector(3, r->_surface->_surface)) return;
-					if (!_commit_selectors()) return;
+					if (!_update_selector_constant(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_constant, VKSelectorState2D::selector_constant_local, &draw, sizeof(draw))) return;
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_vertex | VKPipelineLayout::selector_mapping_esse_type_buffer, VKSelectorState2D::selector_vertex_buffer, _common->area);
+					_state->UpdateSelector(VKPipelineLayout::selector_mapping_esse_stage_pixel | VKPipelineLayout::selector_mapping_esse_type_texture, VKSelectorState2D::selector_color_surface, r->_surface->_surface);
+					if (!_state->PushState(_current_pass->buffer, _current_pass->retain, _current_pass->stub_sampler))return;
 					api->Dispatch.vkCmdDraw(_current_pass->buffer, 6, 1, 0, 0);
 				}
 			}
@@ -4040,7 +4169,7 @@ namespace ESSE
 				viewport.offset_x = 0; viewport.offset_y = 0;
 				viewport.width = rtv.Texture->GetWidth(); viewport.height = rtv.Texture->GetHeight();
 				try {
-					_selectors = owrap(new VKSmallSelectorBuffer);
+					_state = owrap(new VKSelectorState2D);
 					_clipboxes.Clear();
 					_clipboxes.Push(Rectangle(0, 0, rtv.Texture->GetWidth(), rtv.Texture->GetHeight()));
 					_viewports.Clear();
@@ -4058,7 +4187,7 @@ namespace ESSE
 			bool EndPass(void) noexcept
 			{
 				_stop_rendering();
-				_selectors.Clear();
+				_state.Clear();
 				_current_destination.Clear();
 				_main_destination.Clear();
 				_current_pass = 0;
@@ -4913,8 +5042,9 @@ namespace ESSE
 			oref<VKDeviceAPI> _api;
 			oref<VKQueue> _dispatcher;
 			oref<VKDeviceImmediateContext> _immediate_context;
-			oref<VKLayout> _layout;
+			oref<VKDeviceStats> _stats;
 			oref<VK2DCommonResources> _common;
+			ObjectDictionary<string, VKPipelineLayout> _layouts;
 			VkPhysicalDeviceMemoryProperties _memory_info;
 			int _queue_family_index;
 			volatile bool _valid;
@@ -5655,11 +5785,11 @@ namespace ESSE
 				pool_info.flags = 0;
 				pool_info.queueFamilyIndex = queue_family_index;
 				if (_api->Dispatch.vkCreateCommandPool(_api->Device, &pool_info, &_api->Base->Allocator, &_pool) != VK_SUCCESS) return false;
-				_layout = owrap(new (std::nothrow) VKLayout(_api, physical));
-				if (!_layout || !_layout->Initialize()) return false;
-				_dispatcher = owrap(new (std::nothrow) VKQueue(this));
+				_stats = owrap(new (std::nothrow) VKDeviceStats(_api, _physical));
+				if (!_stats) return false;
+				_dispatcher = owrap(new (std::nothrow) VKQueue(this, _stats));
 				if (!_dispatcher) return false;
-				if (!_dispatcher->Initialize(_api, _queue, _pool, _layout, _queue_family_index, &_valid)) return false;
+				if (!_dispatcher->Initialize(_api, _queue, _pool, _queue_family_index, &_valid)) return false;
 				_immediate_context = owrap(new (std::nothrow) VKDeviceImmediateContext(this, _dispatcher));
 				if (!_immediate_context) return false;
 				_api->Base->Dispatch.vkGetPhysicalDeviceMemoryProperties(_physical, &_memory_info);
@@ -5796,12 +5926,15 @@ namespace ESSE
 						shader_stream->Read(shader_spirv.GetBuffer(), shader_length);
 						auto shader = owrap(new (std::nothrow) VKShader(_api, this));
 						if (!shader) throw OutOfMemoryException();
+						uintptr shader_spirv_offset;
+						ReadShaderResourceMapping(shader_spirv.GetBuffer(), shader_spirv.GetLength() << 2U, shader->GetResourceMapping(), shader_spirv_offset, ectx);
+						if (ErrorTest(ectx)) return 0;
 						VkShaderModuleCreateInfo info;
 						info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 						info.pNext = 0;
 						info.flags = 0;
-						info.pCode = shader_spirv.GetBuffer();
-						info.codeSize = shader_spirv.GetLength() << 2U;
+						info.pCode = shader_spirv.GetBuffer() + shader_spirv_offset;
+						info.codeSize = (shader_spirv.GetLength() - shader_spirv_offset) << 2U;
 						if (_api->Dispatch.vkCreateShaderModule(_api->Device, &info, &_api->Base->Allocator, &shader->_module) != VK_SUCCESS) return 0;
 						shader->_name = shader_name;
 						shader->_type = shader_type;
@@ -5911,6 +6044,8 @@ namespace ESSE
 						shader->_type = shader_type;
 						shader->_entry = shader_entry;
 						result->_shaders.Append(shader_name, shader);
+						ReadShaderResourceMapping(shader_data, shader->GetResourceMapping(), ectx);
+						if (ErrorTest(ectx)) return 0;
 					}
 					if (result->_shaders.IsEmpty()) throw CustomException(ErrorMake(Errores::ErrorDynamicLinkage, Errores::SuberrorDL::NoDedicatedVersion));
 					return oref<IShaderLibrary>(result);
@@ -5921,7 +6056,23 @@ namespace ESSE
 				if (!desc.RenderTargetCount || desc.RenderTargetCount > 8 || !desc.VertexShader || !desc.PixelShader || !_api->Dispatch.vkCmdBeginRenderingKHR) return 0;
 				if (desc.VertexShader->GetType() != ShaderType::Vertex) return 0;
 				if (desc.PixelShader->GetType() != ShaderType::Pixel) return 0;
-				auto state = owrap(new (std::nothrow) VKPipelineState(_api, this));
+				oref<VKPipelineLayout> pipeline_layout;
+				try {
+					auto layout_symbol = VKPipelineLayout::MakeLayoutSymbol(static_cast<VKShader *>(desc.VertexShader), static_cast<VKShader *>(desc.PixelShader));
+					auto cached_layout = _layouts[layout_symbol];
+					if (!cached_layout) {
+						pipeline_layout = owrap(new (std::nothrow) VKPipelineLayout(_stats));
+						if (!pipeline_layout || !pipeline_layout->Initialize(static_cast<VKShader *>(desc.VertexShader), static_cast<VKShader *>(desc.PixelShader))) return 0;
+						_layouts.Append(layout_symbol, pipeline_layout);
+					} else pipeline_layout = cached_layout;
+					auto current = _layouts.GetFirst();
+					while (current) {
+						auto next = current->GetNext();
+						if (current->GetValue().value->GetReferenceCount() == 1) _layouts.BinaryTree::Remove(current);
+						current = next;
+					}
+				} catch (...) { return 0; }
+				auto state = owrap(new (std::nothrow) VKPipelineState(_api, this, pipeline_layout));
 				if (!state) return 0;
 				VkPipelineRenderingCreateInfo attachments;
 				VkFormat attachment_formats[8];
@@ -6118,7 +6269,7 @@ namespace ESSE
 				pipeline_info.pDepthStencilState = &depth_stencil;
 				pipeline_info.pColorBlendState = &color_blend;
 				pipeline_info.pDynamicState = &dynamic_state;
-				pipeline_info.layout = _layout->pipeline_layout;
+				pipeline_info.layout = pipeline_layout->pipeline_layout;
 				pipeline_info.renderPass = 0;
 				pipeline_info.subpass = 0;
 				pipeline_info.basePipelineHandle = 0;
@@ -6715,11 +6866,14 @@ namespace ESSE
 		{
 			ESSE_TRY_INTRO
 				if (length < 0 || !data) throw InvalidArgumentException();
+				array<uint> mapping(1);
 				array<char> code(1);
 				oref<DataBlock> result;
 				code.SetLength(length + 1);
 				Memory::MemoryCopy(code.GetBuffer(), data, length);
 				code[length] = 0;
+				ReadShaderResourceMapping(code, mapping, ectx);
+				if (ErrorTest(ectx)) return 0;
 				glslang_input_t input;
 				input.language = GLSLANG_SOURCE_GLSL;
 				if (desc.InputClass == VulkanInputGLSLVertexFunction) input.stage = GLSLANG_STAGE_VERTEX;
@@ -6766,10 +6920,13 @@ namespace ESSE
 				}
 				compiler->glslang_program_SPIRV_generate(module_context, input.stage);
 				try {
-					auto length = compiler->glslang_program_SPIRV_get_size(module_context) * 4;
+					auto length = (compiler->glslang_program_SPIRV_get_size(module_context) + mapping.GetLength() + 1) * 4;
+					auto mapping_length = mapping.GetLength() * 4;
 					result = owrap(new DataBlock(length));
 					result->SetLength(length);
-					compiler->glslang_program_SPIRV_get(module_context, reinterpret_cast<uint32 *>(result->GetBuffer()));
+					Memory::MemoryCopy(result->GetBuffer(), mapping.GetBuffer(), mapping_length);
+					result->ElementAt(mapping_length) = result->ElementAt(mapping_length + 1) = result->ElementAt(mapping_length + 2) = result->ElementAt(mapping_length + 3) = 0;
+					compiler->glslang_program_SPIRV_get(module_context, reinterpret_cast<uint32 *>(result->GetBuffer() + mapping_length + 4));
 				} catch (...) {
 					compiler->glslang_program_delete(module_context);
 					compiler->glslang_shader_delete(context);
