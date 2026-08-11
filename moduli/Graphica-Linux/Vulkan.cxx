@@ -4394,7 +4394,7 @@ namespace ESSE
 			oref<VKSurface> _surface;
 			oref<VKSwapChain> _swapchain;
 			oref<VKTexture> _intermediate;
-			uint _usage, _desired_attributes, _effective_attributes;
+			uint _usage, _desired_attributes, _effective_attributes, _size_desync_counter;
 			PixelFormat _esse_format;
 			VkPhysicalDevice _device;
 			VkFormat _vk_format;
@@ -4411,7 +4411,7 @@ namespace ESSE
 				return true;
 			}
 		public:
-			VKPresentationLayer(VKQueue * queue, IDevice * parent_device, VkPhysicalDevice physical) : _queue(queue), _parent(parent_device), _device(physical) {}
+			VKPresentationLayer(VKQueue * queue, IDevice * parent_device, VkPhysicalDevice physical) : _queue(queue), _parent(parent_device), _device(physical), _size_desync_counter(0) {}
 			virtual ~VKPresentationLayer(void) override { if (_swapchain) _queue->RemoveSwapChain(this); }
 			virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"VKPresentationLayer"; ESSE_TRY_OUTRO(string()) }
 			virtual IDevice * GetParentDevice(void) noexcept override { return _parent; }
@@ -4508,6 +4508,11 @@ namespace ESSE
 				present.pResults = 0;
 				auto status = api->Dispatch.vkQueuePresentKHR(_queue->GetQueue(), &present);
 				_swapchain->SetAllocated(false);
+				if (window && (_swapchain->GetWidth() != size.x || _swapchain->GetHeight() != size.y)) {
+					_size_desync_counter++;
+					auto ws = Windows::GetWindowSystem();
+					if (ws && _size_desync_counter <= 5) try { oref<Windows::IWindow> wnd = window; ws->SubmitTask(CreateFunctionalTask([wnd]() { wnd->Invalidate(); })); } catch (...) {}
+				} else _size_desync_counter = 0;
 				return (status >= 0);
 			}
 			virtual oref<ITexture> QuerySurface(void) noexcept override { return _intermediate.Inner(); }

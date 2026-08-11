@@ -280,7 +280,7 @@ namespace ESSE
 				if (_tile_mode) {
 					_api->cairo_pattern_set_extend(_pattern, 1);
 					OverrideTileReferenceRectangle(entire);
-				}
+				} else _api->cairo_pattern_set_extend(_pattern, 3);
 			}
 		public:
 			CairoBitmapBrush(Graphica::IDeviceContext2D * parent, CairoAPI * api, Graphica::IBitmap * bitmap, const Rectangle & area, bool tile) : _parent(parent), _api(api), _tile_mode(tile) { _bitmap = static_cast<CairoBitmap *>(bitmap); _init(area); }
