@@ -7,32 +7,8 @@ namespace ESSE
 {
 	namespace Power
 	{
-		class SleepPreventor : public Object
-		{
-			oref<DBus::IConnection> _con;
-			uint32 _token;
-		public:
-			SleepPreventor(void)
-			{
-				ErrorContext ectx; ErrorClear(ectx);
-				_con = DBus::IConnection::Query(DBus::BusType::SessionBus, ectx);
-				ErrorThrow(ectx);
-				DBus::Variant token;
-				if (!_con->BeginInvocation("/org/freedesktop/PowerManagement/Inhibit", "org.freedesktop.PowerManagement.Inhibit", "Inhibit")) throw Exception();
-				if (!_con->AddStringArgument(IO::Path::GetFileName(IO::GetExecutablePath()))) throw Exception();
-				if (!_con->AddStringArgument(U"")) throw Exception();
-				if (!_con->EndInvocationVariant(token)) throw Exception();
-				if (token.type != 'u') throw Exception();
-				_token = token.ui32;
-			}
-			virtual ~SleepPreventor(void) override
-			{
-				_con->BeginInvocation("/org/freedesktop/PowerManagement/Inhibit", "org.freedesktop.PowerManagement.Inhibit", "UnInhibit");
-				_con->AddUInt32Argument(_token);
-				_con->EndInvocationNoWait();
-			}
-		};
-		oref<SleepPreventor> _preventor;
+		uint _system_lock_type = 0;
+		handle _system_lock_file = IO::InvalidHandle;
 		void GetPowerStatus(PowerStatusDesc & desc) noexcept
 		{
 			try {
@@ -122,19 +98,40 @@ namespace ESSE
 		}
 		bool PreventIdleSleep(bool prevent_system_sleep, bool prevent_display_sleep) noexcept
 		{
-			if (prevent_system_sleep || prevent_display_sleep) {
+			uint type;
+			if (prevent_display_sleep) type = 2;
+			else if (prevent_system_sleep) type = 1;
+			else type = 0;
+			Memory::AcquireRootLock();
+			if (_system_lock_type == type) { Memory::ReleaseRootLock(); return true; }
+			Memory::ReleaseRootLock();
+			if (type) {
+				ErrorContext ectx; ErrorClear(ectx);
+				auto bus = DBus::IConnection::Query(DBus::BusType::SystemBus, ectx);
+				if (ErrorTest(ectx)) return false;
+				if (!bus->BeginInvocation("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "Inhibit")) return false;
+				try {
+					if (type == 2) { if (!bus->AddStringArgument(U"idle")) return false; }
+					else if (type == 1) { if (!bus->AddStringArgument(U"sleep")) return false; }
+					if (!bus->AddStringArgument(IO::Path::GetFileName(IO::GetExecutablePath()))) return false;
+					if (!bus->AddStringArgument(U"")) return false;
+					if (!bus->AddStringArgument(U"block")) return false;
+				} catch (...) { return false; }
+				handle lock;
+				if (!bus->EndInvocationHandle(lock)) return false;
 				Memory::AcquireRootLock();
-				if (_preventor) { Memory::ReleaseRootLock(); return true; }
-				Memory::ReleaseRootLock();
-				oref<SleepPreventor> preventor;
-				try { preventor = owrap(new SleepPreventor); } catch (...) { return false; }
-				Memory::AcquireRootLock();
-				if (!_preventor) _preventor = preventor;
+				if (_system_lock_file != IO::InvalidHandle) IO::CloseHandle(_system_lock_file);
+				_system_lock_file = lock;
+				_system_lock_type = type;
 				Memory::ReleaseRootLock();
 				return true;
 			} else {
 				Memory::AcquireRootLock();
-				_preventor.Clear();
+				if (_system_lock_file != IO::InvalidHandle) {
+					IO::CloseHandle(_system_lock_file);
+					_system_lock_file = IO::InvalidHandle;
+					_system_lock_type = 0;
+				}
 				Memory::ReleaseRootLock();
 				return true;
 			}

@@ -25,6 +25,7 @@ namespace ESSE
 			virtual bool BeginInvocation(const char * path, const char * interface, const char * method) noexcept = 0;
 			virtual bool EndInvocationNoWait(void) noexcept = 0;
 			virtual bool EndInvocationVoid(void) noexcept = 0;
+			virtual bool EndInvocationHandle(handle & responce) noexcept = 0;
 			virtual bool EndInvocationVariant(Variant & responce) noexcept = 0;
 			virtual bool EndInvocationVariantArray(array<Variant> & responce) noexcept = 0;
 			virtual bool EndInvocationObjectArray(array<ucs1_string> & responce) noexcept = 0;

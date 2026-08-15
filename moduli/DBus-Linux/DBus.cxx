@@ -1,5 +1,6 @@
 #include "DBus.h"
 #include "DBusDL.h"
+#include <Cor/IO/CorIO.h>
 
 namespace ESSE
 {
@@ -48,6 +49,28 @@ namespace ESSE
 					auto reply = _api->dbus_connection_send_with_reply_and_block(_con, _current, DBUS_TIMEOUT_INFINITE, 0);
 					if (reply) _api->dbus_message_unref(reply);
 					_api->dbus_message_unref(_current); _current = 0;
+					return reply;
+				} else return false;
+			}
+			virtual bool EndInvocationHandle(handle & responce) noexcept override
+			{
+				if (_current) {
+					auto reply = _api->dbus_connection_send_with_reply_and_block(_con, _current, DBUS_TIMEOUT_INFINITE, 0);
+					bool rv_ok = true;
+					if (reply) {
+						DBusMessageIter iter;
+						if (_api->dbus_message_iter_init(reply, &iter)) {
+							auto type = _api->dbus_message_iter_get_arg_type(&iter);
+							if (type == DBUS_TYPE_UNIX_FD) {
+								int fd;
+								_api->dbus_message_iter_get_basic(&iter, &fd);
+								responce = reinterpret_cast<handle>(intptr(fd));
+							} else rv_ok = false;
+						} else rv_ok = false;
+						_api->dbus_message_unref(reply);
+					}
+					_api->dbus_message_unref(_current); _current = 0;
+					if (!rv_ok) responce = IO::InvalidHandle;
 					return reply;
 				} else return false;
 			}
