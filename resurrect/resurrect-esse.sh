@@ -34,20 +34,27 @@ mkdir bin
 resurrect/_bin/esse -R bin/esse.ini --reconfigura -N || { echo "Reconfiguratio falsa."; exit 3; }
 resurrect/_bin/esse -R bin/esse.ini esse.ertproj -N || { echo "Compilatio ultima ESSE falsa."; exit 4; }
 resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -N || { echo "Compilatio ultima convertoris falsa."; exit 4; }
+resurrect/_bin/esse -R bin/esse.ini sysstatus/esse-sysstatus.esse -N || { echo "Compilatio ultima statoris systemae falsa."; exit 4; }
 ESSE_CONS_EXEC=`resurrect/_bin/esse -R bin/esse.ini esse.ertproj -OSE`
 ESSE_CONV_EXEC=`resurrect/_bin/esse -R bin/esse.ini convertor/esse-converte.esse -OSE`
+ESSE_SYSS_EXEC=`resurrect/_bin/esse -R bin/esse.ini sysstatus/esse-sysstatus.esse -OSE`
 cp resurrect/esse.loc.ini bin/esse.loc.ini
 cp "$ESSE_CONS_EXEC" bin/esse
 cp "$ESSE_CONV_EXEC" bin/esse-converte
+cp "$ESSE_SYSS_EXEC" bin/esse-sysstatus
 mkdir bin/esse.loc
 mkdir bin/esse.conv.loc
+mkdir bin/esse.ss.loc
 bin/esse-converte lineae constructor/esse.loc.en.txt -Nfo bin bin/esse.loc/en.ecst
 bin/esse-converte lineae constructor/esse.loc.ru.txt -Nfo bin bin/esse.loc/ru.ecst
 bin/esse-converte lineae convertor/loc.en.txt -Nfo bin bin/esse.conv.loc/en.ecst
 bin/esse-converte lineae convertor/loc.ru.txt -Nfo bin bin/esse.conv.loc/ru.ecst
+bin/esse-converte lineae sysstatus/loc.en.txt -Nfo bin bin/esse.ss.loc/en.ecst
+bin/esse-converte lineae sysstatus/loc.ru.txt -Nfo bin bin/esse.ss.loc/ru.ecst
 rm -rf resurrect/_obj
 rm -rf resurrect/_bin
 rm -rf _build
 rm -rf convertor/_build
+rm -rf sysstatus/_build
 echo "Resurrectum bene est!"
 bin/esse -NF

@@ -1,0 +1,22 @@
+Compila {
+	A = "esse-sysstatus.cxx"
+}
+Moduli {
+	A = "cor"
+	B = "graphica"
+	C = "formationes"
+	D = "consolatorium"
+    E = "imprimitio"
+    F = "fenestrae"
+    G = "energia"
+}
+IndentitasApplicationis = "ESSE.StatusSystemae"
+IndentitasCreatoris = "EngineSoftware"
+CreaMetaDefinitiones = true
+Meta {
+	NomenApplicationis = "Engine Constructor SubSystemae - Status Systemae"
+	CreatorApplicationis = "Engine Software"
+	JuraExempli = "© Engine Software. 2026"
+	NomenInternum = "esse-sysstatus"
+	VersioApplicationis = "2.0.0.1"
+}
