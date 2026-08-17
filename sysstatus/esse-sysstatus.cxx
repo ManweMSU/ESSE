@@ -436,23 +436,27 @@ ESSE_MAIN_ROUTINE {
 							state.console->WriteLineFormatted(U"  " + FormatString(base, dev));
 							auto device = fact->OpenPrinter(dev);
 							if (device) {
+								Graphica::PrinterModeDesc mode;
+								device->GetDefaultMode(mode);
 								auto po = device->EnumerateOrientations();
 								auto dm = device->EnumerateDuplexModes();
 								auto pf = device->EnumeratePaperFormats();
 								state.console->WriteLineFormatted(U"    \033E*" + Localized(706) + U"\033-*:");
 								for (auto & v : *po) {
-									if (v == Graphica::PaperOrientation::Portrait) state.console->WriteLineFormatted(U"      \033F*" + Localized(710) + U"\033-*:");
-									else if (v == Graphica::PaperOrientation::Landscape) state.console->WriteLineFormatted(U"      \033F*" + Localized(711) + U"\033-*:");
+									string color = v == mode.Orientation ? U"A*" : U"F*";
+									if (v == Graphica::PaperOrientation::Portrait) state.console->WriteLineFormatted(U"      \033" + color + Localized(710) + U"\033-*");
+									else if (v == Graphica::PaperOrientation::Landscape) state.console->WriteLineFormatted(U"      \033" + color + Localized(711) + U"\033-*");
 								}
 								state.console->WriteLineFormatted(U"    \033E*" + Localized(707) + U"\033-*:");
 								for (auto & v : *dm) {
-									if (v == Graphica::PrinterDuplexMode::Simplex) state.console->WriteLineFormatted(U"      \033F*" + Localized(712) + U"\033-*:");
-									else if (v == Graphica::PrinterDuplexMode::Duplex) state.console->WriteLineFormatted(U"      \033F*" + Localized(713) + U"\033-*:");
-									else if (v == Graphica::PrinterDuplexMode::DuplexTumble) state.console->WriteLineFormatted(U"      \033F*" + Localized(714) + U"\033-*:");
+									string color = v == mode.DuplexMode ? U"A*" : U"F*";
+									if (v == Graphica::PrinterDuplexMode::Simplex) state.console->WriteLineFormatted(U"      \033" + color + Localized(712) + U"\033-*");
+									else if (v == Graphica::PrinterDuplexMode::Duplex) state.console->WriteLineFormatted(U"      \033" + color + Localized(713) + U"\033-*");
+									else if (v == Graphica::PrinterDuplexMode::DuplexTumble) state.console->WriteLineFormatted(U"      \033" + color + Localized(714) + U"\033-*");
 								}
 								state.console->WriteLineFormatted(U"    \033E*" + Localized(708) + U"\033-*:");
 								array<string> table(0x100);
-								for (auto & f : *pf) table << FormatString(Localized(715), NumericString(f.x, 10, 1), NumericString(f.y, 10, 1));
+								for (auto & f : *pf) table << FormatString(Localized(f.x == mode.PaperWidth && f.y == mode.PaperLength ? 718 : 715), NumericString(f.x, 10, 1), NumericString(f.y, 10, 1));
 								while (table.GetLength() % 6) table << U"";
 								TableView(table, 6, table.GetLength() / 6, 6);
 								state.console->WriteLineFormatted(U"    \033E*" + Localized(709) + U"\033-*: " + (device->CanCollate() ? Localized(716) : Localized(717)));
