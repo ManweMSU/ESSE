@@ -12,6 +12,7 @@ namespace esse {
 		};
 		struct resource_tool : build_tool
 		{
+			bool create_installation_metadata;
 			resource_tool_mode mode;
 			string resource_driver_module;
 			string resource_tool_command;
