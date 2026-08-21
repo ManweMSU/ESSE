@@ -2737,7 +2737,10 @@ namespace ESSE
 				if (_first_time_loop || _file_list_to_open.GetLength()) {
 					bool opened = false, ftl = _first_time_loop;
 					if (_callback && _callback->AcceptsApplicationCommand(Windows::ApplicationCommand::OpenSpecificFile)) {
-						for (auto & file : _file_list_to_open) try { if (_callback->HandleApplicationCommand(Windows::ApplicationCommand::OpenSpecificFile, file)) opened = true; } catch (...) {}
+						for (auto & file : _file_list_to_open) try {
+							auto fxf = file.FindFirst(U"file://", 7, 0) == 0 ? _uri_path_transform(file.Substring(7, -1), true) : file;
+							if (_callback->HandleApplicationCommand(Windows::ApplicationCommand::OpenSpecificFile, fxf)) opened = true;
+						} catch (...) {}
 					}
 					_file_list_to_open.Clear();
 					_first_time_loop = false;
