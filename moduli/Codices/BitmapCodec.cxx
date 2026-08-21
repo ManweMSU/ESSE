@@ -124,6 +124,14 @@ namespace ESSE
 					char signature[18]; // 'TRUEVISION-XFILE.\0'
 				ESSE_END_PACKED_STRUCTURE
 			}
+			bool PictureNeedsAlpha(Picture * pict) noexcept
+			{
+				auto & desc = pict->GetDesc();
+				if (PixelFormatHasAlpha(desc.format)) return true;
+				if (!NeedsPalette(desc.format)) return false;
+				for (uint i = 0; i < desc.palette_size; i++) if (desc.palette[i].a != 0xFF) return true;
+				return false;
+			}
 			uint BitmapCodecExtractChannel(uint32 dword, uint32 mask) noexcept
 			{
 				if (!mask) return 0;
@@ -151,7 +159,7 @@ namespace ESSE
 				}
 				if (override_bpp) {
 					if (override_bpp <= 24) pxf = PixelFormat::B8G8R8;
-					else if (PixelFormatHasAlpha(pxf)) pxf = PixelFormat::B8G8R8A8;
+					else if (PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8;
 					else pxf = PixelFormat::B8G8R8X8;
 				}
 				oref<Picture> encode;
@@ -193,6 +201,7 @@ namespace ESSE
 				uint override_bpp = 0;
 				for (uint i = 0; i < argc; i++) if (arg_names[i] == EncoderOptions::OverrideBitDepth) { override_bpp = arg_values[i]; break; }
 				PixelFormat pxf = src->GetDesc().format;
+				if (NeedsPalette(pxf) && PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8;
 				if (pxf != PixelFormat::P8 && pxf != PixelFormat::R8 && pxf != PixelFormat::B5G5R5X1 &&
 					pxf != PixelFormat::B5G5R5A1 && pxf != PixelFormat::B8G8R8 && pxf != PixelFormat::B8G8R8X8 && pxf != PixelFormat::B8G8R8A8) {
 					if (!override_bpp) override_bpp = GetBitsPerPixel(pxf);
@@ -202,10 +211,10 @@ namespace ESSE
 						if (NeedsPalette(pxf)) pxf = PixelFormat::P8;
 						else pxf = PixelFormat::R8;
 					} else if (override_bpp <= 15) pxf = PixelFormat::B5G5R5X1;
-					else if (override_bpp <= 16 && PixelFormatHasAlpha(pxf)) pxf = PixelFormat::B5G5R5A1;
+					else if (override_bpp <= 16 && PictureNeedsAlpha(src)) pxf = PixelFormat::B5G5R5A1;
 					else if (override_bpp <= 16) pxf = PixelFormat::B5G5R5X1;
 					else if (override_bpp <= 24) pxf = PixelFormat::B8G8R8;
-					else if (PixelFormatHasAlpha(pxf)) pxf = PixelFormat::B8G8R8A8;
+					else if (PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8;
 					else pxf = PixelFormat::B8G8R8X8;
 				}
 				oref<Picture> encode;
@@ -522,16 +531,17 @@ namespace ESSE
 				auto pxf = src->GetDesc().format;
 				uint enforce_bpp = 0;
 				for (uint i = 0; i < argc; i++) if (arg_names[i] == EncoderOptions::OverrideBitDepth) { enforce_bpp = arg_values[i]; break; }
-				if (enforce_bpp == 1) pxf = PixelFormat::P1;
+				if (!enforce_bpp && PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8;
+				else if (enforce_bpp == 1) pxf = PixelFormat::P1;
 				else if (enforce_bpp == 2) pxf = PixelFormat::P2;
 				else if (enforce_bpp == 4) pxf = PixelFormat::P4;
 				else if (enforce_bpp == 8) pxf = PixelFormat::P8;
 				else if (enforce_bpp == 16) pxf = PixelFormat::B5G5R5X1;
 				else if (enforce_bpp == 24) pxf = PixelFormat::B8G8R8;
-				else if (enforce_bpp == 32) { if (uint(pxf) & 0x00000F00) pxf = PixelFormat::B8G8R8A8; else pxf = PixelFormat::B8G8R8X8; }
+				else if (enforce_bpp == 32) { if (PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8; else pxf = PixelFormat::B8G8R8X8; }
 				if (pxf != PixelFormat::P1 && pxf != PixelFormat::P2 && pxf != PixelFormat::P4 && pxf != PixelFormat::P8 && pxf != PixelFormat::B8G8R8 && pxf != PixelFormat::B8G8R8X8 && pxf != PixelFormat::B8G8R8A8) {
 					auto bpp = GetBitsPerPixel(pxf);
-					if (bpp > 25 || (uint(pxf) & 0x00000F00)) { if (uint(pxf) & 0x00000F00) pxf = PixelFormat::B8G8R8A8; else pxf = PixelFormat::B8G8R8X8; }
+					if (bpp > 25 || PictureNeedsAlpha(src)) { if (PictureNeedsAlpha(src)) pxf = PixelFormat::B8G8R8A8; else pxf = PixelFormat::B8G8R8X8; }
 					else if (bpp > 16) pxf = PixelFormat::B8G8R8;
 					else if (bpp > 8) pxf = PixelFormat::B5G5R5X1;
 					else if (bpp > 4) pxf = PixelFormat::P8;

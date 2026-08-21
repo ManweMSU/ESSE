@@ -459,6 +459,14 @@ namespace ESSE
 			if (ErrorTest(ectx) || written != size) return libheif::heif_error { .code = 9, .subcode = 0, .message = 0 };
 			return libheif::heif_error { .code = 0, .subcode = 0, .message = 0 };
 		}
+		bool PictureNeedsAlpha(Picture * pict) noexcept
+		{
+			auto & desc = pict->GetDesc();
+			if (PixelFormatHasAlpha(desc.format)) return true;
+			if (!NeedsPalette(desc.format)) return false;
+			for (uint i = 0; i < desc.palette_size; i++) if (desc.palette[i].a != 0xFF) return true;
+			return false;
+		}
 
 		void PngCodecEncode(Stream * dest, Picture * src, const uint * arg_names, const uint * arg_values, uint argc)
 		{
@@ -473,7 +481,7 @@ namespace ESSE
 			for (uint i = 0; i < argc; i++) if (arg_names[i] == EncoderOptions::OverrideBitDepth) { enforce_bpp = arg_values[i]; break; }
 			int png_color_type;
 			int png_transform = PNG_TRANSFORM_IDENTITY;
-			if (uint(src->GetDesc().format) & 0x00000F00 || enforce_bpp == 32) {
+			if (PictureNeedsAlpha(src) || enforce_bpp == 32) {
 				png_color_type = PNG_COLOR_TYPE_RGB_ALPHA;
 				pxf = PixelFormat::R8G8B8A8;
 			} else {
@@ -698,7 +706,7 @@ namespace ESSE
 					alpha_format = am == AlphaMode::Premultiplied ? EXTRASAMPLE_ASSOCALPHA : EXTRASAMPLE_UNASSALPHA;
 					pxf = PixelFormat::R8A8;
 					if (am != AlphaMode::Premultiplied) am = AlphaMode::Straight;
-				} else if (uint(pxf) & 0x00000F00) {
+				} else if (PictureNeedsAlpha(&f)) {
 					nchannels = 4;
 					color_format = PHOTOMETRIC_RGB;
 					alpha_format = am == AlphaMode::Premultiplied ? EXTRASAMPLE_ASSOCALPHA : EXTRASAMPLE_UNASSALPHA;
@@ -811,7 +819,7 @@ namespace ESSE
 				pxf = PixelFormat::B8G8R8;
 			} else if (pxf == PixelFormat::B8G8R8A8) {
 				pxf = PixelFormat::B8G8R8A8;
-			} else if (uint(pxf) & 0x00000F00) {
+			} else if (PictureNeedsAlpha(src)) {
 				pxf = PixelFormat::R8G8B8A8;
 			} else {
 				pxf = PixelFormat::R8G8B8;
@@ -895,7 +903,7 @@ namespace ESSE
 			}
 			if (pxf == PixelFormat::R1 || pxf == PixelFormat::R2 || pxf == PixelFormat::R4 || pxf == PixelFormat::R8) {
 				pxf = PixelFormat::R8;
-			} else if (uint(pxf) & 0x00000F00) {
+			} else if (PictureNeedsAlpha(src)) {
 				pxf = PixelFormat::R8G8B8A8;
 			} else {
 				pxf = PixelFormat::R8G8B8;
