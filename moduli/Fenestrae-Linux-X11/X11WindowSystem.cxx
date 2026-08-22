@@ -2736,14 +2736,13 @@ namespace ESSE
 				_break_without_windows = while_there_are_windows;
 				if (_first_time_loop || _file_list_to_open.GetLength()) {
 					bool opened = false, ftl = _first_time_loop;
+					auto flto = _file_list_to_open; _file_list_to_open.Clear(); _first_time_loop = false;
 					if (_callback && _callback->AcceptsApplicationCommand(Windows::ApplicationCommand::OpenSpecificFile)) {
-						for (auto & file : _file_list_to_open) try {
+						for (auto & file : flto) try {
 							auto fxf = file.FindFirst(U"file://", 7, 0) == 0 ? _uri_path_transform(file.Substring(7, -1), true) : file;
 							if (_callback->HandleApplicationCommand(Windows::ApplicationCommand::OpenSpecificFile, fxf)) opened = true;
 						} catch (...) {}
 					}
-					_file_list_to_open.Clear();
-					_first_time_loop = false;
 					if (!opened && ftl && _callback && _callback->AcceptsApplicationCommand(Windows::ApplicationCommand::CreateFile)) _callback->HandleApplicationCommand(Windows::ApplicationCommand::CreateFile, string());
 				}
 				_dispatch->RunEventLoop();
