@@ -218,12 +218,12 @@ namespace ESSE
 				if (_flags & TypesetterFlags::Underlined) {
 					auto w2 = _metrics.UnderlineWidth / 2;
 					auto base = int(dy + _metrics.Ascent - _metrics.UnderlinePosition - w2);
-					context->Render(_brush, Rectangle(dx, base, dx + _extents.x, base + _metrics.UnderlineWidth));
+					context->Render(_brush, Rectangle(dx, base, dx + _extents.x, base + max<int>(_metrics.UnderlineWidth, 1)));
 				}
 				if (_flags & TypesetterFlags::Strikedout) {
 					auto w2 = _metrics.StrikeoutWidth / 2;
 					auto base = int(dy + _metrics.Ascent - _metrics.StrikeoutPosition - w2);
-					context->Render(_brush, Rectangle(dx, base, dx + _extents.x, base + _metrics.StrikeoutWidth));
+					context->Render(_brush, Rectangle(dx, base, dx + _extents.x, base + max<int>(_metrics.StrikeoutWidth, 1)));
 				}
 			}
 			if (_flags & TypesetterFlags::EnableClipping) context->PopClip();

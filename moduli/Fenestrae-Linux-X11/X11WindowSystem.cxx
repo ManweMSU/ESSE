@@ -2745,6 +2745,7 @@ namespace ESSE
 					}
 					if (!opened && ftl && _callback && _callback->AcceptsApplicationCommand(Windows::ApplicationCommand::CreateFile)) _callback->HandleApplicationCommand(Windows::ApplicationCommand::CreateFile, string());
 				}
+				if (while_there_are_windows && _root_windows.IsEmpty()) { _break_without_windows = old_break_without_windows; return; }
 				_dispatch->RunEventLoop();
 				_break_without_windows = old_break_without_windows;
 			}
