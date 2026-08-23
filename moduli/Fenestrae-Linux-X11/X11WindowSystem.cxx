@@ -1860,7 +1860,9 @@ namespace ESSE
 			double _get_system_scale_factor(void) noexcept
 			{
 				try {
-					string rsrc = _xlib_api->XResourceManagerString(_con->GetXDisplay());
+					auto prsrc = _xlib_api->XResourceManagerString(_con->GetXDisplay());
+					if (!prsrc) return 1.0;
+					string rsrc = prsrc;
 					auto records = SplitString(rsrc, U'\n');
 					for (auto & r : records) {
 						auto del = r.FindFirst(U":\t");
