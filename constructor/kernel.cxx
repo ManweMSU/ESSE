@@ -1031,7 +1031,7 @@ namespace esse {
 				io.console->SetTextColor(ConsoleColor::Default);
 				io.console->WriteLine(io.localized(311));
 			}
-			try { CreateDirectoryTree(state.project_object_path); } catch (...) {
+			if (!state.idle_mode) try { CreateDirectoryTree(state.project_object_path); } catch (...) {
 				if (!state.io->silent_mode) (*state.io->console) << TextColor(12) << state.io->localized(222) << TextColorDefault() << LineFeed();
 				return false;
 			}

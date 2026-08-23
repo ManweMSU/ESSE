@@ -95,18 +95,20 @@ namespace esse {
 		void resource_tool::process_file(const string & input, const string & mdl, const string & option, build_state * state, process_context & context)
 		{
 			Volumes::Dictionary<string, icon_record> icon_map;
-			if (state->app.application_icon.Length()) {
-				uint icon_counter = 1;
-				if (!prepare_icon(state->app.application_icon, icon_map, icon_counter, state)) {
-					context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), state->app.application_icon));
-					return;
+			if (!state->idle_mode) {
+				if (state->app.application_icon.Length()) {
+					uint icon_counter = 1;
+					if (!prepare_icon(state->app.application_icon, icon_map, icon_counter, state)) {
+						context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), state->app.application_icon));
+						return;
+					}
 				}
-			}
-			uint icon_counter = 2;
-			for (auto & ff : state->app.file_formats) if (ff.file_format_icon.Length()) {
-				if (!prepare_icon(ff.file_format_icon, icon_map, icon_counter, state)) {
-					context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), ff.file_format_icon));
-					return;
+				uint icon_counter = 2;
+				for (auto & ff : state->app.file_formats) if (ff.file_format_icon.Length()) {
+					if (!prepare_icon(ff.file_format_icon, icon_map, icon_counter, state)) {
+						context.build_status_notify(input, build_tool_status::failed, 0, 0, FormatString(state->io->localized(233), ff.file_format_icon));
+						return;
+					}
 				}
 			}
 			if (mode == resource_tool_mode::embed || mode == resource_tool_mode::bundle) {
@@ -239,7 +241,7 @@ namespace esse {
 					}
 				}
 				if (mode == resource_tool_mode::embed) {
-					if (create_installation_metadata) try {
+					if (create_installation_metadata && !state->idle_mode) try {
 						SafePointer<Storage::Registry> meta = Storage::CreateRegistry();
 						if (!meta) throw OutOfMemoryException();
 						meta->CreateNode(L"Icones");
