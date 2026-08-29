@@ -70,6 +70,12 @@
 506 "Implements inversion effect"
 507 "Implements blur effect"
 508 "\eC*N/A\e-*"
+509 "Screen named \"\eF*%0\e-*\""
+510 "Screen named \"\eF*%0\e-*\", \eA*the default\e-*"
+511 "Resolution"
+512 "Virtual rectangle"
+513 "Scale factor"
+514 "full \eF*%0\e-*, \eF*%1\e-* - \eF*%2\e-*, \eF*%3\e-*, user \eF*%4\e-*, \eF*%5\e-* - \eF*%6\e-*, \eF*%7\e-*"
 
 601 "Graphics processing units"
 602 "\eC*Hardware graphics layer is unavailable\e-*"

@@ -291,7 +291,7 @@ ESSE_MAIN_ROUTINE {
 				state.console->WriteLineFormatted(Localized(501));
 				ErrorContext ectx; ErrorClear(ectx);
 				auto ws = Windows::CreateWindowSystem(ectx);
-				if (ErrorTest(ectx)) state.console->WriteLineFormatted(U"  \033E*" + Localized(501) + U"\033-*: " + Localized(508));
+				if (ErrorTest(ectx)) { state.console->WriteLineFormatted(U"  \033E*" + Localized(501) + U"\033-*: " + Localized(508)); ws = 0; }
 				else state.console->WriteLineFormatted(U"  \033E*" + Localized(501) + U"\033-*: \033F*" + ws->ToString() + U"\033-*");
 				ErrorClear(ectx);
 				auto fact = Graphica::CreateDeviceContextFactory2D(ectx);
@@ -313,6 +313,21 @@ ESSE_MAIN_ROUTINE {
 						if (caps & Graphica::DeviceContextSupportsBlurEffect) state.console->WriteLineFormatted(U"    \033A*" + Localized(507) + U"\033-*");
 					}
 				} else state.console->WriteLineFormatted(U"  \033E*" + Localized(502) + U"\033-*: " + Localized(508));
+				if (ws) {
+					auto screens = ws->EnumerateScreens();
+					auto default_screen = ws->GetDefaultScreen();
+					if (screens) for (auto & s : *screens) {
+						auto rect = s.GetScreenRectangle();
+						auto user = s.GetUserRectangle();
+						auto base = Localized(default_screen && default_screen->GetScreenRectangle() == s.GetScreenRectangle() ? 510 : 509);
+						state.console->WriteLineFormatted(U"  " + FormatString(base, s.GetName()));
+						array<string> main_table(0x100);
+						main_table << (U"    \033E*" + Localized(511) + U"\033-*:") << (U"\033F*" + string(s.GetResolution().x) + U"\033-* x \033F*" + string(s.GetResolution().y) + U"\033-*");
+						main_table << (U"    \033E*" + Localized(512) + U"\033-*:") << FormatString(Localized(514), rect.left, rect.top, rect.right, rect.bottom, user.left, user.top, user.right, user.bottom);
+						main_table << (U"    \033E*" + Localized(513) + U"\033-*:") << (U"\033F*" + NumericString(s.GetScaleFactor() * 100.0, 100, 2) + U"\033-*");
+						TableView(main_table, 2, main_table.GetLength() / 2);
+					}
+				}
 			}
 			if (state.gpu) {
 				state.console->WriteLineFormatted(Localized(601));
