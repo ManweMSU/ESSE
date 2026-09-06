@@ -282,8 +282,8 @@ ESSE_MAIN_ROUTINE {
 				Power::GetPowerStatus(desc);
 				string ps;
 				if (desc.status == Power::PowerStatus::LinePower) ps = Localized(402);
-				else if (desc.status == Power::PowerStatus::BatteryCharging) ps = FormatString(Localized(403), uint(desc.battery_charge_level));
-				else if (desc.status == Power::PowerStatus::BatteryDischarging) ps = FormatString(Localized(404), uint(desc.battery_charge_level));
+				else if (desc.status == Power::PowerStatus::BatteryDischarging) ps = FormatString(Localized(403), uint(desc.battery_charge_level));
+				else if (desc.status == Power::PowerStatus::BatteryCharging) ps = FormatString(Localized(404), uint(desc.battery_charge_level));
 				else ps = Localized(405);
 				state.console->WriteLineFormatted(U"  \033E*" + Localized(401) + U"\033-*: " + ps);
 			}
