@@ -146,8 +146,7 @@ namespace ESSE
 					else if (measure == 4) _mode.DPI = dpx * 100 / 254;
 					else _mode.DPI = 96;
 				} else _mode.DPI = 96;
-				if (collate1) _mode.Collate = Memory::StringCompare(collate1, "separate-documents-collated-copies") == 0;
-				else _mode.Collate = collate2;
+				_mode.Collate = collate2 || (collate1 && Memory::StringCompare(collate1, "separate-documents-collated-copies") == 0);
 				CUPS::cups_size_t size;
 				Memory::ZeroMemory(&size, sizeof(size));
 				auto media = _get_default_value_string(CUPS_MEDIA);
@@ -206,7 +205,7 @@ namespace ESSE
 					return result;
 				} catch (...) { return 0; }
 			}
-			virtual bool CanCollate(void) noexcept override { return _api->cupsCheckDestSupported(_http, _dest, _info, "collate", "true") != 0; }
+			virtual bool CanCollate(void) noexcept override { return true; }
 			virtual void GetDefaultMode(PrinterModeDesc & desc) noexcept override { desc = _mode; }
 			virtual bool SetDefaultMode(const PrinterModeDesc & desc) noexcept override { if (CheckMode(desc)) { _mode = desc; return true; } else return false; }
 			virtual bool CheckMode(const PrinterModeDesc & desc) noexcept override
@@ -234,9 +233,6 @@ namespace ESSE
 				} else if (desc.DuplexMode == PrinterDuplexMode::DuplexTumble) {
 					if (!_api->cupsCheckDestSupported(_http, _dest, _info, CUPS_SIDES, CUPS_SIDES_TWO_SIDED_LANDSCAPE)) return false;
 				} else return false;
-				if (desc.Collate) {
-					if (!_api->cupsCheckDestSupported(_http, _dest, _info, "collate", "true")) return false;
-				}
 				try {
 					ucs1_string value = string(desc.Copies);
 					if (!_api->cupsCheckDestSupported(_http, _dest, _info, CUPS_COPIES, value)) return false;

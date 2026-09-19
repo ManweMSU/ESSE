@@ -456,6 +456,7 @@ ESSE_MAIN_ROUTINE {
 								auto po = device->EnumerateOrientations();
 								auto dm = device->EnumerateDuplexModes();
 								auto pf = device->EnumeratePaperFormats();
+								state.console->WriteLineFormatted(U"    \033E*" + Localized(719) + U"\033-*: " + FormatString(Localized(720), mode.DPI));
 								state.console->WriteLineFormatted(U"    \033E*" + Localized(706) + U"\033-*:");
 								for (auto & v : *po) {
 									string color = v == mode.Orientation ? U"A*" : U"F*";

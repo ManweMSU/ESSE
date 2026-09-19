@@ -131,3 +131,5 @@
 716 "\eA*yes\e-*"
 717 "\eC*no\e-*"
 718 "\eA*%0\e2*x\eA*%1\e2* mm\e-*"
+719 "Printing quality"
+720 "\eF*%0\e-* dpi"
