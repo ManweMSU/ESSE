@@ -28,7 +28,7 @@ namespace ESSE
 			CUPSPrintingContext(CUPS::CUPSAPI * api, IPrinter * printer, CUPS::http_t http, CUPS::cups_dest_t * dest, CUPS::cups_dinfo_t info, const ucs1_string & name, const PrinterModeDesc & mode) : _api(api), _printer(printer), _http(http), _dest(dest), _info(info), _finished(false), _name(name)
 			{
 				_pdf_stream = MemoryStream::Create(0x100000);
-				_pdf_context = CreateContextPDF(PDF::CreateEncoder(_pdf_stream), mode, PDF::PageFlagColorFull | PDF::PageFlagCompress, true);
+				_pdf_context = CreateContextPDF(PDF::CreateEncoder(_pdf_stream), mode, PDF::PageFlagColorFull, true);
 				int option_count = 0;
 				CUPS::cups_option_t * options = 0;
 				try {
