@@ -93,4 +93,7 @@ CoCompila {
 	JO = "UserInterface/RichEditControl.cpp"
 	JP = "UserInterface/ScrollableControls.cpp"
 	JQ = "UserInterface/StaticControls.cpp"
+	ZA = "SystemPrinting.cpp"
+	ZB = "PortableEncoder.cpp"
+	ZC = "StreamPrinter.cpp"
 }
