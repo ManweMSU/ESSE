@@ -538,6 +538,7 @@ namespace ESSE
 								if (callback) callback->DragFinished(perform);
 								callback = 0;
 							}
+							host->SetCurrentCursor(uint(Windows::SystemCursorClass::Arrow));
 							EndDrop();
 						}
 					} else if (event->type == ButtonRelease) {
@@ -570,7 +571,7 @@ namespace ESSE
 						if (!(mask & Button1Mask)) { if (!dropped) EndDrop(); return; }
 						Window new_target = 0, new_target_proxy = 0;
 						Atom new_target_version = 0;
-						while (true) {
+						while (child_return) {
 							Atom version;
 							Window proxy;
 							_read_window_caps(api, display, atoms, child_return, version, proxy);
@@ -580,16 +581,9 @@ namespace ESSE
 								new_target_version = version;
 								break;
 							}
-							Window read_root, read_parent, * read_children;
-							unsigned int number_of_children;
-							if (!api->XQueryTree(display, child_return, &read_root, &read_parent, &read_children, &number_of_children)) { read_children = 0; read_parent = 0; }
-							if (read_children) api->XFree(read_children);
-							if (!read_parent) break;
-							int parent_x, parent_y;
-							api->XTranslateCoordinates(display, child_return, read_parent, child_x, child_y, &parent_x, &parent_y, &read_root);
-							child_return = read_parent;
-							child_x = parent_x;
-							child_y = parent_y;
+							Window subwindow;
+							if (!api->XQueryPointer(display, child_return, &root_return, &subwindow, &root_x, &root_y, &child_x, &child_y, &mask)) return;
+							child_return = subwindow;
 						}
 						if (new_target != target) {
 							if (target) {
@@ -634,6 +628,7 @@ namespace ESSE
 								if (data.format_mask & Windows::ClipboardDataFormatDataFormat) if (i < 5) event.xclient.data.l[i++] = atoms->data_format_mime;
 								api->XSendEvent(display, target_proxy, False, 0, &event);
 							}
+							host->SetCurrentCursor(SystemCursorDnDNone);
 							api->XFlush(display);
 						}
 						if (target) {
