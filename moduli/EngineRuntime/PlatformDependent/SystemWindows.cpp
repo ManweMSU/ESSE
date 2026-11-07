@@ -655,7 +655,7 @@ namespace Engine
 		private:
 			static Windows::IPCStatus _status_wrap(ESSE::Windows::IPCStatus status) noexcept
 			{
-				if (status == ESSE::Windows::IPCStatus::Accepted) return Windows::IPCStatus::Accepted;
+				if (status == ESSE::Windows::IPCStatus::Succeeded) return Windows::IPCStatus::Accepted;
 				else if (status == ESSE::Windows::IPCStatus::Discarded) return Windows::IPCStatus::Discarded;
 				else if (status == ESSE::Windows::IPCStatus::ServerClosed) return Windows::IPCStatus::ServerClosed;
 				else if (status == ESSE::Windows::IPCStatus::InternalError) return Windows::IPCStatus::InternalError;
@@ -674,7 +674,7 @@ namespace Engine
 						if (presult) *presult = _status_wrap(status);
 						if (hdlr) hdlr->DoTask(Windows::GetWindowSystem());
 					});
-					return _inner->SendData(static_cast<const ESSE::unichar32 *>(verb), data ? data->GetBuffer() : 0, data ? data->Length() : 0, task, &task->Value1);
+					return _inner->SendMessage(static_cast<const ESSE::unichar32 *>(U"E" + verb), data ? data->GetBuffer() : 0, data ? data->Length() : 0, task, &task->Value1, 0);
 				} catch (...) { return false; }
 			}
 			virtual bool RequestData(const string & verb, IDispatchTask * on_responce, Windows::IPCStatus * result, DataBlock ** data) noexcept override
@@ -697,7 +697,7 @@ namespace Engine
 						}
 						if (hdlr) hdlr->DoTask(Windows::GetWindowSystem());
 					});
-					return _inner->RequireData(static_cast<const ESSE::unichar32 *>(verb), task, &task->Value1, &task->Value2);
+					return _inner->SendMessage(static_cast<const ESSE::unichar32 *>(U"I" + verb), 0, 0, task, &task->Value1, &task->Value2);
 				} catch (...) { return false; }
 			}
 			virtual Windows::IPCStatus GetStatus(void) noexcept override { return _status_wrap(_inner->GetStatus()); }
@@ -1001,24 +1001,21 @@ namespace Engine
 				} catch (...) { return false; }
 			}
 			virtual void HandleHotKeyEvent(ESSE::uint event_id) noexcept override { try { if (_callback) _callback->HotKeyEvent(event_id); } catch (...) {} }
-			virtual bool IPCReceiveData(ESSE::handle client, const ESSE::string & verb, const void * data, ESSE::uintptr length) noexcept override
-			{
-				try {
-					if (!_callback) return false;
-					SafePointer<DataBlock> block = new DataBlock(length);
-					block->SetLength(length);
-					MemoryCopy(block->GetBuffer(), data, length);
-					return _callback->DataExchangeReceive(client, verb.GetData(), block);
-				} catch (...) { return false; }
-			}
-			virtual ESSE::oref<ESSE::DataBlock> IPCSendData(ESSE::handle client, const ESSE::string & verb) noexcept override
+			virtual ESSE::oref<ESSE::DataBlock> IPCClientMessage(ESSE::handle client, const ESSE::string & verb, const void * data, ESSE::uintptr length) noexcept override
 			{
 				try {
 					if (!_callback) return 0;
-					SafePointer<DataBlock> result = _callback->DataExchangeRespond(client, verb.GetData());
-					auto block = ESSE::owrap(new ESSE::DataBlock(1));
-					block->Append(result->GetBuffer(), result->Length());
-					return block;
+					if (verb[0] == U'E') {
+						SafePointer<DataBlock> block = new DataBlock(length);
+						block->SetLength(length);
+						MemoryCopy(block->GetBuffer(), data, length);
+						return _callback->DataExchangeReceive(client, verb.Substring(1, -1).GetData(), block) ? ESSE::oref<ESSE::DataBlock>::CreateOwned(new ESSE::DataBlock(1)) : ESSE::oref<ESSE::DataBlock>();
+					} else if (verb[0] == U'I') {
+						SafePointer<DataBlock> result = _callback->DataExchangeRespond(client, verb.Substring(1, -1).GetData());
+						auto block = ESSE::owrap(new ESSE::DataBlock(1));
+						block->Append(result->GetBuffer(), result->Length());
+						return block;
+					} else return 0;
 				} catch (...) { return 0; }
 			}
 			virtual void IPCClientDisconnect(ESSE::handle client) noexcept override { try { if (_callback) _callback->DataExchangeDisconnect(client); } catch (...) {} }

@@ -37,6 +37,7 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(XCreateWindow)
 				DEFINE_FUNCTION_IMPORT(XDestroyWindow)
 				DEFINE_FUNCTION_IMPORT(XChangeProperty)
+				DEFINE_FUNCTION_IMPORT(XDeleteProperty)
 				DEFINE_FUNCTION_IMPORT(XSync)
 				DEFINE_FUNCTION_IMPORT(XChangeWindowAttributes)
 				DEFINE_FUNCTION_IMPORT(XQueryKeymap)
@@ -64,7 +65,7 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(XMapRaised)
 				DEFINE_FUNCTION_IMPORT(XUnmapWindow)
 				DEFINE_FUNCTION_IMPORT(XWithdrawWindow)
-				DEFINE_FUNCTION_IMPORT(XSetSizeHints)
+				DEFINE_FUNCTION_IMPORT(XSetWMSizeHints)
 				DEFINE_FUNCTION_IMPORT(XResizeWindow)
 				DEFINE_FUNCTION_IMPORT(XMoveWindow)
 				DEFINE_FUNCTION_IMPORT(XCreateIC)
@@ -92,6 +93,7 @@ namespace ESSE
 				DEFINE_FUNCTION_IMPORT(XGetVisualInfo)
 				DEFINE_FUNCTION_IMPORT(XSelectInput)
 				DEFINE_FUNCTION_IMPORT(XSetClassHint)
+				DEFINE_FUNCTION_IMPORT(XAllocSizeHints)
 				DEFINE_FUNCTION_IMPORT(XkbLibraryVersion)
 				DEFINE_FUNCTION_IMPORT(XkbQueryExtension)
 				DEFINE_FUNCTION_IMPORT(XkbGetMap)
@@ -138,5 +140,15 @@ namespace ESSE
 			} catch (...) { dlclose(_library); throw; }
 		}
 		XCursorAPI::~XCursorAPI(void) { dlclose(_library); }
+		XShapeAPI::XShapeAPI(void)
+		{
+			_library = dlopen("libXext.so", RTLD_NOW);
+			if (!_library) throw NotImplementedException();
+			try {
+				DEFINE_FUNCTION_IMPORT(XShapeQueryExtension)
+				DEFINE_FUNCTION_IMPORT(XShapeCombineRectangles)
+			} catch (...) { dlclose(_library); throw; }
+		}
+		XShapeAPI::~XShapeAPI(void) { dlclose(_library); }
 	}
 }

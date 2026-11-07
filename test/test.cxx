@@ -1,7 +1,6 @@
 ﻿#include <Cor/Cor.h>
 #include <Auxilia/Auxilia.h>
 #include <Consolatorium/Consolatorium.h>
-#include <EngineRuntime.h>
 #include <Imagines/Imagines.h>
 #include <Graphica/Graphica.h>
 #include <Graphica-Linux/Vulkan.h>
@@ -10,10 +9,12 @@
 #include <Fenestrae/Fenestrae.h>
 #include <Auxilia/Auxilia.h>
 
+#include <unistd.h>
+
 using namespace ESSE;
 using namespace ESSE::Picturae;
 
-class HDLR : public Object, public ESSE::Windows::IApplicationCallback, public ESSE::Windows::IWindowCallback, public ESSE::Windows::IStatusCallback
+class HDLR : public Object, public ESSE::Windows::IApplicationCallback, public ESSE::Windows::IWindowCallback, public ESSE::Windows::IStatusCallback, public ESSE::Windows::IDragCallback
 {
 	oref<Graphica::IDeviceContextFactory2D> factory;
 	oref<Graphica::IBitmap> bitmap;
@@ -34,8 +35,9 @@ public:
 		wdesc.title = U"Валера Пиздюк";
 		wdesc.callback = subhdlr;
 		wdesc.parent_window = parent;
-		wdesc.position = Rectangle(100, 100, 1000, 1000);
-		wdesc.minimal_constraints = wdesc.maximal_constraints = Index2(0, 0);
+		wdesc.position = Rectangle(200, 200, 1000, 1000);
+		wdesc.minimal_constraints = Index2(400, 400);
+		wdesc.maximal_constraints = Index2(0, 0);
 		auto window = ws->CreateWindow(&wdesc);
 		window->SetVisibility(true);
 	}
@@ -120,7 +122,11 @@ public:
 	virtual void WindowHelpRequired(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW HELP"); }
 	virtual void WindowActivated(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW ACTIVATE"); }
 	virtual void WindowDeactivated(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW DEACTIVATE"); }
-	virtual void WindowMoved(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW MOVED"); }
+	virtual void WindowMoved(Windows::IWindow * window) noexcept
+	{
+		auto rect = window->GetPosition();
+		con->WriteLine(FormatString(U"WINDOW MOVED: %0, %1, %2, %3", rect.left, rect.top, rect.right, rect.bottom));
+	}
 	virtual void WindowResized(Windows::IWindow * window) noexcept { con->WriteLine(U"WINDOW RESIZED: " + string(window->GetClientSize())); window->Invalidate(); }
 	virtual void FocusChanged(Windows::IWindow * window, bool got) noexcept { con->WriteLine(U"WINDOW FOCUS: " + string(got)); }
 	virtual bool KeyIsDown(Windows::IWindow * window, uint vkc, uint vkm) noexcept
@@ -148,9 +154,11 @@ public:
 				brush.Clear();
 				window->Invalidate();
 			} else if (cdesc.format_mask & Windows::ClipboardDataFormatData) {
-				con->WriteLine(U"Data on the clipboard:");
-				con->WriteLine(cdesc.data_format);
-				con->WriteLine(HexStringFromData(cdesc.data, 0, true));
+				for (auto & f : cdesc.data) {
+					con->WriteLine(U"Data on the clipboard:");
+					con->WriteLine(f.key);
+					con->WriteLine(HexStringFromData(f.value, 0, true));
+				}
 			}
 		} else if (vkc == VirtualKeyCodes::T) {
 			Windows::ClipboardDataDesc cdesc;
@@ -168,8 +176,22 @@ public:
 			cdesc.files = owrap(new array<string>(1));
 			cdesc.files->Append(IO::GetExecutablePath());
 			Windows::GetWindowSystem()->GetClipboardManager()->WriteClipboard(cdesc);
+		} else if (vkc == VirtualKeyCodes::I) {
+			uint word1 = GetThisProcessPID();
+			uint word2 = 666;
+			auto data1 = owrap(new DataBlock(1));
+			auto data2 = owrap(new DataBlock(1));
+			data1->Append(reinterpret_cast<const uint8 *>(&word1), 4);
+			data2->Append(reinterpret_cast<const uint8 *>(&word2), 4);
+			Windows::ClipboardDataDesc cdesc;
+			cdesc.format_mask = Windows::ClipboardDataFormatData;
+			cdesc.data.Append(U"Custom.Format.1", data1);
+			cdesc.data.Append(U"Custom.Format.2", data2);
+			Windows::GetWindowSystem()->GetClipboardManager()->WriteClipboard(cdesc);
 		} else if (vkc == VirtualKeyCodes::M) {
 			Windows::GetWindowSystem()->SetCursorPosition(window->ConvertClientToGlobal(window->GetClientSize() / Index2(2, 2)));
+		} else if (vkc == VirtualKeyCodes::N) {
+			window->SetPosition(Rectangle(200, 200, 800, 800));
 		}
 		return false;
 	}
@@ -178,7 +200,20 @@ public:
 	virtual void MouseEntered(Windows::IWindow * window, uint button_state) noexcept { con->WriteLine(U"WINDOW MOUSE ENTERED: " + string(button_state)); }
 	virtual void MouseLeft(Windows::IWindow * window, uint button_state) noexcept { con->WriteLine(U"WINDOW MOUSE LEAVED: " + string(button_state)); }
 	virtual void MouseMoved(Windows::IWindow * window, const Index2 & at, uint button_state) noexcept { con->WriteLine(U"WINDOW MOUSE MOVED: " + string(at) + U", " + string(button_state)); }
-	virtual void LeftButtonIsDown(Windows::IWindow * window, const Index2 & at, bool double_click) noexcept { con->WriteLine(U"WINDOW MOUSE LEFT DOWN: " + string(at) + U", " + string(double_click)); }
+	virtual void LeftButtonIsDown(Windows::IWindow * window, const Index2 & at, bool double_click) noexcept {
+		con->WriteLine(U"WINDOW MOUSE LEFT DOWN: " + string(at) + U", " + string(double_click));
+		Windows::DragDataDesc cdesc;
+		auto img = bitmap->QueryContents();
+		cdesc.data.format_mask = Windows::ClipboardDataFormatText | Windows::ClipboardDataFormatImage | Windows::ClipboardDataFormatFiles;
+		cdesc.data.text = U"Валера пиздюк";
+		cdesc.data.image = bitmap->QueryContents();
+		cdesc.data.files = owrap(new array<string>(0x10));
+		cdesc.data.files->Append(IO::GetExecutablePath());
+		cdesc.actions = Windows::DragActionCopy | Windows::DragActionMove;
+		cdesc.icon = img;
+		cdesc.user_data = reinterpret_cast<handle>(uintptr(666));
+		con->WriteLine(U"DRAG INIT: " + string(window->LaunchDragSession(cdesc, this)));
+	}
 	virtual void LeftButtonIsUp(Windows::IWindow * window, const Index2 & at) noexcept { con->WriteLine(U"WINDOW MOUSE LEFT UP: " + string(at)); }
 	virtual void RightButtonIsDown(Windows::IWindow * window, const Index2 & at, bool double_click) noexcept { con->WriteLine(U"WINDOW MOUSE RIGHT DOWN: " + string(at) + U", " + string(double_click)); }
 	virtual void RightButtonIsUp(Windows::IWindow * window, const Index2 & at) noexcept { con->WriteLine(U"WINDOW MOUSE RIGHT UP: " + string(at)); }
@@ -189,6 +224,55 @@ public:
 	virtual bool IsWindowCommandEnabled(Windows::IWindow * window, Windows::WindowCommand command) noexcept { con->WriteLine(U"WINDOW COMMAND TEST: " + string(uint(command))); return true; }
 	virtual void HandleWindowCommand(Windows::IWindow * window, Windows::WindowCommand command) noexcept { con->WriteLine(U"WINDOW COMMAND: " + string(uint(command))); }
 	virtual void HandleStatusIconCommand(Windows::IStatusBarIcon * icon, int id) noexcept { con->WriteLine(U"STATUS COMMAND: " + string(uint(id))); Windows::GetWindowSystem()->EnumerateTopLevelWindows()->ElementAt(0)->RequireAttention(); }
+	virtual void DragStarted(Windows::IWindow * origin, const Windows::DragDataDesc & desc) noexcept
+	{
+		con->WriteLine(U"DRAG BEGIN");
+	}
+	virtual void DragFinished(uint drag_action) noexcept
+	{
+		con->WriteLine(U"DRAG END: " + string(uint(drag_action)));
+	}
+	virtual uint DragEntered(Windows::IWindow * window, Windows::IDragSession * drag, const Index2 & at) noexcept
+	{
+		con->WriteLine(FormatString(U"DRAG ENTER: (%2, %3); %0; %1", drag->GetActionsSupported(), drag->ProbeDataFormats(0xFFFF), at.x, at.y));
+		return Windows::DragActionCopy;
+	}
+	virtual uint DragMoved(Windows::IWindow * window, Windows::IDragSession * drag, const Index2 & at) noexcept
+	{
+		con->WriteLine(FormatString(U"DRAG MOVE: (%2, %3); %0; %1", drag->GetActionsSupported(), drag->ProbeDataFormats(0xFFFF), at.x, at.y));
+		return Windows::DragActionCopy;
+	}
+	virtual uint DragDropped(Windows::IWindow * window, Windows::IDragSession * drag, const Index2 & at) noexcept
+	{
+		con->WriteLine(FormatString(U"DRAG DROP: (%2, %3); %0; %1", drag->GetActionsSupported(), drag->ProbeDataFormats(0xFFFF), at.x, at.y));
+		Windows::ClipboardDataDesc cdesc;
+		drag->ReadData(0xFFFF, cdesc);
+		if (cdesc.format_mask & Windows::ClipboardDataFormatText) {
+			con->WriteLine(U"Text on the clipboard: " + cdesc.text);
+		}
+		if (cdesc.format_mask & Windows::ClipboardDataFormatFiles) {
+			con->WriteLine(U"Files on the clipboard:");
+			for (auto & f : *cdesc.files) con->WriteLine(f);
+		}
+		if (cdesc.format_mask & Windows::ClipboardDataFormatImage) {
+			con->WriteLine(U"Image on the clipboard (see to the window)");
+			bitmap = factory->LoadBitmap(cdesc.image);
+			brush.Clear();
+			window->Invalidate();
+		}
+		if (cdesc.format_mask & Windows::ClipboardDataFormatData) {
+			for (auto & f : cdesc.data) {
+				con->WriteLine(U"Data on the clipboard:");
+				con->WriteLine(f.key);
+				con->WriteLine(HexStringFromData(f.value, 0, true));
+			}
+		}
+		return Windows::DragActionCopy;
+	}
+	virtual void DragLeft(Windows::IWindow * window) noexcept
+	{
+		con->WriteLine(U"DRAG LEAVE");
+	}
 };
 
 oref<Windows::IMenuItem> CreateTestMenuItem(int i, int j)
@@ -265,11 +349,8 @@ int Main(void)
 {
 	auto con = ESSE::IO::CreateConsole();
 	auto & console = *con;
-	ESSE::ErrorContext ectx;
-	ESSE::ErrorClear(ectx);
+
 	try {
-		Engine::SystemDesc desc;
-		Engine::GetSystemInformation(desc);
 		auto hdlr = ESSE::owrap(new HDLR);
 		hdlr->con = con;
 		auto ws = Windows::CreateWindowSystem();
@@ -283,8 +364,8 @@ int Main(void)
 		const void * picon;
 		uintptr licon;
 		QueryResource(&picon, &licon, "1", "ICON");
-		auto sicon = ws->CreateStatusBarIcon();
 		auto iicon = DecodeImage(StaticMemoryStream::Create(picon, licon));
+		auto sicon = ws->CreateStatusBarIcon();
 		sicon->SetEventID(777);
 		sicon->SetMenu(CreateTestMenu());
 		sicon->SetCallback(hdlr);
@@ -293,98 +374,11 @@ int Main(void)
 		sicon->SetTooltip(U"VALERA");
 		sicon->PresentIcon(true);
 
-		Engine::UI::CurrentScaleFactor = ws->GetDefaultScreen()->GetScaleFactor();
-		auto ews = Engine::Windows::GetWindowSystem();
-		Engine::Windows::OpenFileInfo info;
-		info.Formats.Append(Engine::Windows::FileFormat());
-		info.Formats.LastElement().Extensions << U"txt";
-		info.Formats.LastElement().Description = U"A text file";
-		info.MultiChoose = true;
-		ews->OpenFileDialog(&info, 0, 0);
-		console.WriteLine(static_cast<const unichar32 *>(info.Files.ToString()));
-
 		ws->PushUserNotification("VALERA", "PIZDUK", iicon);
+		ws->LaunchIPCServer(U"test", U"EngineSoftware");
 		ws->Beep();
 		hdlr->wnew(0, 0);
 
-		// auto devf = ESSE::Graphica::CreateDeviceFactory();
-		// auto dev = devf->CreateDefaultDevice();
-		// auto ctx = dev->GetPrimaryDeviceContext();
-		// Graphica::TextureDesc tdesc;
-		// Graphica::ResourceInitDesc tinit;
-		// tdesc.Type = Graphica::TextureType::Type2D;
-		// tdesc.Format = Graphica::PixelFormat::B8G8R8A8_unorm;
-		// tdesc.MipmapCount = 1;
-		// tdesc.Usage = Graphica::ResourceUsageShaderAll | Graphica::ResourceUsageCPUAll | Graphica::ResourceUsageRenderTarget;
-		// tdesc.MemoryPool = Graphica::ResourceMemoryPool::Regular;
-		// auto frame1 = DecodePicture(FileStream::Create(U"/home/aemilianus/Pictures/Elaina.png", FileAccess::AccessRead, FileCreationMode::OpenExisting))->Convert(PixelFormat::B8G8R8A8, ScanOrigin::TopLeft);
-		// auto frame2 = DecodePicture(FileStream::Create(U"/home/aemilianus/Pictures/Elaina - 2.jpg", FileAccess::AccessRead, FileCreationMode::OpenExisting))->Convert(PixelFormat::B8G8R8A8, ScanOrigin::TopLeft);
-		// tdesc.Width = frame2->GetDesc().width;
-		// tdesc.Height = frame2->GetDesc().height;
-		// tinit.Data = frame2->GetDesc().data;
-		// tinit.DataPitch = frame2->GetDesc().stride;
-		// auto tex2 = dev->CreateTextureWithData(tdesc, &tinit);
-		// tdesc.Width = 2000;
-		// tdesc.Height = 1000;
-		// tdesc.Usage = Graphica::ResourceUsageShaderAll | Graphica::ResourceUsageCPUAll | Graphica::ResourceUsageRenderTarget;
-		// tdesc.MemoryPool = Graphica::ResourceMemoryPool::Regular;
-		// auto tex3 = dev->CreateTexture(tdesc);
-		// Graphica::RenderTargetViewDesc rtvd;
-		// rtvd.Texture = tex3;
-		// rtvd.LoadAction = Graphica::TextureLoadAction::Clear;
-		// rtvd.ClearValue[0] = 0.5;
-		// rtvd.ClearValue[1] = 0.0;
-		// rtvd.ClearValue[2] = 1.0;
-		// rtvd.ClearValue[3] = 0.5;
-		// ctx->BeginRenderingPass2D(rtvd);
-		// auto ctx2d = reinterpret_cast<Graphica::IDeviceContext2D *>(ctx->DynamicCast(Classes.IDeviceContext2D, ectx));
-		// ErrorThrow(ectx);
-		// double g[] = { 0.0, 1.0 / 6.0, 2.0 / 6.0, 3.0 / 6.0, 4.0 / 6.0, 5.0 / 6.0, 1.0 };
-		// Color c[] = { 0xFF0000FF, 0xFF00FFFF, 0xFF00FF00, 0xFFFFFF00, 0xFFFF0000, 0xFFFF00FF, 0xFF0000FF };
-		// auto b1 = ctx2d->CreateSolidColorBrush(Color(255, 128, 64, 128));
-		// auto b2 = ctx2d->CreateGradientBrush(Index2(100, 0), Index2(200, 100), c, g, 7);
-		// ctx2d->Render(b1, Rectangle(0, 100, 100, 300));
-		// ctx2d->Render(b2, Rectangle(100, 0, 300, 100));
-		// auto bmp = Graphica::CreateDeviceContextFactory2D()->LoadBitmap(frame1);
-		// auto b3 = ctx2d->CreateTileBrush(bmp, Rectangle(0, 0, 0x10000, 0x10000));
-		// auto b4 = ctx2d->CreateTileBrushCopy(b3, Rectangle(500, 500, 800, 800));
-		// auto b5 = ctx2d->CreateTextureBrush(tex2, Graphica::TextureAlphaMode::Ignore);
-		// auto blur = ctx2d->CreateBlurEffectBrush(25.0);
-		// b3->OverrideTileReferenceRectangle(Rectangle(150, 150, 250, 250));
-		// b4->OverrideTileReferenceRectangle(Rectangle(150, 150, 250, 250));
-		// ctx2d->Render(b2, Rectangle(100, 100, 400, 400));
-		// ctx2d->Render(b3, Rectangle(400, 100, 700, 400));
-		// ctx2d->Render(b4, Rectangle(100, 400, 400, 700));
-		// ctx2d->Render(b5, Rectangle(400, 400, 700, 700));
-		// double pp[] = { 400, 700, 400, 100, 100, 400, 700, 400 };
-		// ctx2d->RenderPolygon(pp, pp + 4, 4, blur);
-		// auto font = Graphica::CreateDeviceContextFactory2D()->CreateFont(U"", Graphica::CreateFontSystemDefault | Graphica::CreateFontWeight900, 100);
-		// uint glyphs[6];
-		// font->GetGlyphsForCharacters(U"PIZDUK", glyphs, 6);
-		// double px[6] = { 100, 180, 260, 340, 420, 500 };
-		// double py[6] = { 400, 400, 400, 400, 400, 400 };
-		// Color clr[6] = { Color(128, 0, 255), Color(128, 0, 255), Color(128, 0, 255), Color(128, 0, 255), Color(128, 0, 255), Color(128, 0, 255) };
-		// Graphica::IFont * fnt[6] = { font, font, font, font, font, font };
-		// double m[6] = { 0.5, -0.5, 0.0, 0.5, 0.5, 0.0 };
-		// auto run = ctx2d->CreateGlyphRun(fnt, glyphs, px, py, clr, 6, m);
-		// ctx2d->RenderGlyphRun(run, Index2(0, 0));
-		// ctx->EndCurrentPass();
-		// PictureDesc pdesc;
-		// Graphica::ResourceDataDesc pdata;
-		// pdesc.width = tex3->GetWidth();
-		// pdesc.height = tex3->GetHeight();
-		// pdesc.stride = pdata.DataPitch = 4 * pdesc.width;
-		// pdesc.format = PixelFormat::B8G8R8A8;
-		// pdesc.alpha_mode = AlphaMode::Straight;
-		// pdesc.origin = ScanOrigin::TopLeft;
-		// pdesc.palette_size = 0;
-		// auto pict = owrap(new Picture(pdesc, PictureInit::AllocateUninitialized));
-		// pdata.Data = pict->GetDesc().data;
-		// ctx->BeginMemoryManagementPass();
-		// ctx->QueryResourceData(pdata, tex3, Index2(0, 0), Index3(0, 0, 0), Index3(tex3->GetWidth(), tex3->GetHeight(), 1));
-		// ctx->EndCurrentPass();
-		// Encode(FileStream::Create(U"test3.png", FileAccess::AccessReadWrite, FileCreationMode::CreateAlways), pict, ImageFormatPNG);
-		
 		ws->RunMainLoop(true);
 		console.WriteLine(U"EXITING");
 	} catch (ESSE::Exception & e) {

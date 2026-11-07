@@ -13,6 +13,7 @@ namespace ESSE
 		class IWindowCallback;
 		class IWindow;
 		class IStatusBarIcon;
+		class IDragSession;
 		class IMenuItem;
 		class IMenu;
 
@@ -32,7 +33,7 @@ namespace ESSE
 		enum class StatusBarIconColorUsage : uint { Regular = 0, Monochromic = 1 };
 		enum class ApplicationCommand : uint { Terminate = 0, CreateFile = 1, OpenSomeFile = 2, OpenSpecificFile = 3, ShowHelp = 4, ShowAbout = 5, ShowProperties = 6 };
 		enum class WindowCommand : uint { Save = 0, SaveAs = 1, Export = 2, Print = 3, Undo = 4, Redo = 5, Cut = 6, Copy = 7, Paste = 8, Duplicate = 9, Delete = 10, Find = 11, Replace = 12, SelectAll = 13 };
-		enum class IPCStatus : uint { Unknown = 0, Accepted = 1, Discarded = 2, ServerClosed = 3, InternalError = 4 };
+		enum class IPCStatus : uint { Unknown = 0, Succeeded = 1, Discarded = 2, ServerClosed = 3, InternalError = 4 };
 		
 		enum ClipboardDataFormats : uint {
 			ClipboardDataFormatText			= 0x01,
@@ -80,14 +81,26 @@ namespace ESSE
 			MouseLeftButtonIsDown	= 1,
 			MouseRightButtonIsDown	= 2,
 		};
+		enum DragAction : uint {
+			DragActionCancel	= 0,
+			DragActionCopy		= 1,
+			DragActionMove		= 2,
+		};
 		
 		struct ClipboardDataDesc
 		{
 			uintptr format_mask;
-			string text, data_format;
+			string text;
 			oref<array<string>> files;
 			oref<Picturae::Picture> image;
-			oref<DataBlock> data;
+			ObjectDictionary<string, DataBlock> data;
+		};
+		struct DragDataDesc
+		{
+			ClipboardDataDesc data;
+			Picturae::Picture * icon;
+			uint actions;
+			handle user_data;
 		};
 		struct CreateWindowDescBase
 		{
@@ -174,6 +187,12 @@ namespace ESSE
 		public:
 			virtual void HandleStatusIconCommand(IStatusBarIcon * icon, int id) noexcept;
 		};
+		class IDragCallback
+		{
+		public:
+			virtual void DragStarted(IWindow * origin, const DragDataDesc & desc) noexcept;
+			virtual void DragFinished(uint drag_action) noexcept;
+		};
 		class IWindowCallback
 		{
 		public:
@@ -210,7 +229,12 @@ namespace ESSE
 			// Scroll events
 			virtual void ScrollVertically(IWindow * window, const Index2 & at, double delta) noexcept;
 			virtual void ScrollHorizontally(IWindow * window, const Index2 & at, double delta) noexcept;
-			// Miscellaneous event
+			// Drag-and-drop events
+			virtual uint DragEntered(IWindow * window, IDragSession * drag, const Index2 & at) noexcept;
+			virtual uint DragMoved(IWindow * window, IDragSession * drag, const Index2 & at) noexcept;
+			virtual uint DragDropped(IWindow * window, IDragSession * drag, const Index2 & at) noexcept;
+			virtual void DragLeft(IWindow * window) noexcept;
+			// Miscellaneous events
 			virtual void EndPopup(IWindow * window) noexcept;
 			virtual void Timer(IWindow * window, int timer_id) noexcept;
 			virtual void ThemeChanged(IWindow * window) noexcept;
@@ -224,8 +248,7 @@ namespace ESSE
 			virtual bool AcceptsWindowCommand(WindowCommand command) noexcept;
 			virtual bool HandleApplicationCommand(ApplicationCommand command, const string & argument) noexcept;
 			virtual void HandleHotKeyEvent(uint event_id) noexcept;
-			virtual bool IPCReceiveData(handle client, const string & verb, const void * data, uintptr length) noexcept;
-			virtual oref<DataBlock> IPCSendData(handle client, const string & verb) noexcept;
+			virtual oref<DataBlock> IPCClientMessage(handle client, const string & verb, const void * data, uintptr length) noexcept;
 			virtual void IPCClientDisconnect(handle client) noexcept;
 		};
 
@@ -244,7 +267,7 @@ namespace ESSE
 		public:
 			virtual uint ProbeClipboardFormats(uint format_mask) noexcept = 0;
 			virtual bool ReadClipboard(uint format_mask, ClipboardDataDesc & dest) noexcept = 0;
-			virtual bool WriteClipboard(const ClipboardDataDesc & dest) noexcept = 0;
+			virtual bool WriteClipboard(const ClipboardDataDesc & src) noexcept = 0;
 		};
 		class ITheme : public Object
 		{
@@ -266,6 +289,13 @@ namespace ESSE
 			virtual Index2 GetResolution(void) noexcept = 0;
 			virtual double GetScaleFactor(void) noexcept = 0;
 			virtual oref<Picturae::Picture> Capture(void) noexcept = 0;
+		};
+		class IDragSession : public Object
+		{
+		public:
+			virtual uint GetActionsSupported(void) noexcept = 0;
+			virtual uint ProbeDataFormats(uint format_mask) noexcept = 0;
+			virtual bool ReadData(uint format_mask, ClipboardDataDesc & dest) noexcept = 0;
 		};
 		class IWindow : public DynamicObject
 		{
@@ -317,6 +347,7 @@ namespace ESSE
 			virtual bool IsFocused(void) noexcept = 0;
 			virtual void SetFocus(void) noexcept = 0;
 			virtual void SetTimer(uint32 id, uint32 period) noexcept = 0;
+			virtual bool LaunchDragSession(const DragDataDesc & data, IDragCallback * callback) noexcept = 0;
 			virtual bool AddExtension(Object * ext, IWindowExtensionClass * extcls) noexcept = 0;
 			virtual bool RemoveExtension(IWindowExtensionClass * extcls) noexcept = 0;
 			virtual Object * GetExtension(IWindowExtensionClass * extcls) noexcept = 0;
@@ -387,8 +418,7 @@ namespace ESSE
 		class IIPCClient : public Object
 		{
 		public:
-			virtual bool SendData(const string & verb, const void * data, uintptr length, IDispatchTask * on_responce, IPCStatus * result) noexcept = 0;
-			virtual bool RequireData(const string & verb, IDispatchTask * on_responce, IPCStatus * result, oref<DataBlock> * data) noexcept = 0;
+			virtual bool SendMessage(const string & verb, const void * data_in, uintptr length_in, IDispatchTask * on_responce, IPCStatus * status, oref<DataBlock> * data_out) noexcept = 0;
 			virtual IPCStatus GetStatus(void) noexcept = 0;
 		};
 		class IWindowSystem : public IDispatchQueue

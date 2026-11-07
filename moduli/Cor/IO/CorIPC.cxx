@@ -90,31 +90,31 @@ namespace ESSE
 			return result;
 		}
 
-		oref<IConnection> Connect(const string & listener_name, uint mode)
+		oref<IConnection> Connect(const string & listener_name, uint smode)
 		{
 			ErrorContext ectx; ErrorClear(ectx);
-			auto result = Connect(listener_name, mode, ectx);
+			auto result = Connect(listener_name, smode, ectx);
 			ErrorThrow(ectx);
 			return result;
 		}
-		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint mode)
+		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint smode)
 		{
 			ErrorContext ectx; ErrorClear(ectx);
-			auto result = CreateConnectionListener(listener_name, mode, ectx);
+			auto result = CreateConnectionListener(listener_name, smode, ectx);
 			ErrorThrow(ectx);
 			return result;
 		}
-		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode mode)
+		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode fmode, uint smode)
 		{
 			ErrorContext ectx; ErrorClear(ectx);
-			auto result = CreateSharedMemory(segment_name, size, mode, ectx);
+			auto result = CreateSharedMemory(segment_name, size, fmode, smode, ectx);
 			ErrorThrow(ectx);
 			return result;
 		}
-		oref<ISharedLock> CreateSharedLock(const string & lock_name)
+		oref<ISharedLock> CreateSharedLock(const string & lock_name, uint smode)
 		{
 			ErrorContext ectx; ErrorClear(ectx);
-			auto result = CreateSharedLock(lock_name, ectx);
+			auto result = CreateSharedLock(lock_name, smode, ectx);
 			ErrorThrow(ectx);
 			return result;
 		}

@@ -6,6 +6,7 @@
 #include <Cor/CorVirtualKeyCodes.h>
 #include <Cor/CorSystemInformation.h>
 #include <Cor-Linux/CorLinuxClasses.h>
+#include <Cor-Linux/CorBoot.h>
 #include <Graphica/Graphica.h>
 #include <Graphica-Linux/DeviceCairo.h>
 #include <Minuti-Linux/Menues.h>
@@ -199,6 +200,7 @@ namespace ESSE
 		struct XStandardAtoms
 		{
 			DEFINE_ATOM_FIELD(net_wm_pid)
+			DEFINE_ATOM_FIELD(selection_delete)
 			DEFINE_ATOM_FIELD(cardinal)
 			DEFINE_ATOM_FIELD(clipboard)
 			DEFINE_ATOM_FIELD(incremental)
@@ -206,6 +208,8 @@ namespace ESSE
 			DEFINE_ATOM_FIELD(targets)
 			DEFINE_ATOM_FIELD(text)
 			DEFINE_ATOM_FIELD(text_utf8)
+			DEFINE_ATOM_FIELD(text_mime)
+			DEFINE_ATOM_FIELD(text_mime_utf8)
 			DEFINE_ATOM_FIELD(text_uri_list)
 			DEFINE_ATOM_FIELD(image_png)
 			DEFINE_ATOM_FIELD(image_jpeg)
@@ -214,6 +218,8 @@ namespace ESSE
 			DEFINE_ATOM_FIELD(image_bmp)
 			DEFINE_ATOM_FIELD(data)
 			DEFINE_ATOM_FIELD(data_format)
+			DEFINE_ATOM_FIELD(data_mime)
+			DEFINE_ATOM_FIELD(data_format_mime)
 			DEFINE_ATOM_FIELD(net_wm_state)
 			DEFINE_ATOM_FIELD(net_wm_state_maximized_horz)
 			DEFINE_ATOM_FIELD(net_wm_state_maximized_vert)
@@ -250,6 +256,22 @@ namespace ESSE
 			DEFINE_ATOM_FIELD(xembed_info)
 			DEFINE_ATOM_FIELD(net_system_tray_opcode)
 			DEFINE_ATOM_FIELD(net_system_tray_visual)
+			DEFINE_ATOM_FIELD(xdnd_aware)
+			DEFINE_ATOM_FIELD(xdnd_proxy)
+			DEFINE_ATOM_FIELD(xdnd_selection)
+			DEFINE_ATOM_FIELD(xdnd_type_list)
+			DEFINE_ATOM_FIELD(xdnd_action_copy)
+			DEFINE_ATOM_FIELD(xdnd_action_move)
+			DEFINE_ATOM_FIELD(xdnd_action_ask)
+			DEFINE_ATOM_FIELD(xdnd_action_private)
+			DEFINE_ATOM_FIELD(xdnd_action_ask_list)
+			DEFINE_ATOM_FIELD(xdnd_action_ask_desc)
+			DEFINE_ATOM_FIELD(xdnd_enter)
+			DEFINE_ATOM_FIELD(xdnd_position)
+			DEFINE_ATOM_FIELD(xdnd_status)
+			DEFINE_ATOM_FIELD(xdnd_leave)
+			DEFINE_ATOM_FIELD(xdnd_drop)
+			DEFINE_ATOM_FIELD(xdnd_finished)
 		};
 		class XTheme : public Windows::ITheme
 		{
@@ -404,12 +426,445 @@ namespace ESSE
 		};
 		class XWindow : public Windows::IWindow, IX11Window, IXWindowEventHandler
 		{
+			class XDnDSessionSource : public Object, IXWindowEventHandler
+			{
+				Windows::ClipboardDataDesc data;
+				Windows::IDragCallback * callback;
+				uint actions;
+				handle user_data;
+				oref<XServerConnection> con;
+				IX11Window * host;
+				IX11WindowSystem * ws;
+				XStandardAtoms * atoms;
+				bool active, dropped;
+				struct {
+					Window window;
+					Visual * visual;
+					Colormap colormap;
+					Pixmap buffer;
+					GC blt;
+					Index2 size;
+				} overlay;
+				Window target, target_proxy;
+				Atom target_action;
+				Atom target_version;
+			private:
+				static void _read_window_caps(XLibAPI * api, Display * display, XStandardAtoms * atoms, Window window, Atom & version, Window & proxy) noexcept
+				{
+					Atom prop_aware_type, prop_proxy_type;
+					int prop_aware_size, prop_proxy_size;
+					unsigned long prop_aware_length, prop_proxy_length, prop_aware_rem, prop_proxy_rem;
+					void * prop_aware, * prop_proxy;
+					if (api->XGetWindowProperty(display, window, atoms->xdnd_aware, 0, 1, False, AnyPropertyType, &prop_aware_type, &prop_aware_size, &prop_aware_length, &prop_aware_rem, &prop_aware) != Success) prop_aware = 0;
+					if (api->XGetWindowProperty(display, window, atoms->xdnd_proxy, 0, 1, False, AnyPropertyType, &prop_proxy_type, &prop_proxy_size, &prop_proxy_length, &prop_proxy_rem, &prop_proxy) != Success) prop_proxy = 0;
+					if (prop_proxy && prop_proxy_type == atoms->window && prop_proxy_size == 32 && prop_proxy_length == 1) {
+						Window w;
+						proxy = *reinterpret_cast<XID *>(prop_proxy);
+						_read_window_caps(api, display, atoms, proxy, version, w);
+					} else if (prop_aware && prop_aware_type == atoms->atom && prop_aware_size == 32 && prop_aware_length == 1) {
+						version = *reinterpret_cast<Atom *>(prop_aware);
+						proxy = 0;
+					} else { version = 0; proxy = 0; }
+					if (prop_aware) api->XFree(prop_aware);
+					if (prop_proxy) api->XFree(prop_proxy);
+				}
+				void _remove_overlay(XLibAPI * api, Display * display) noexcept
+				{
+					if (overlay.blt) api->XFreeGC(display, overlay.blt);
+					if (overlay.buffer) api->XFreePixmap(display, overlay.buffer);
+					if (overlay.window) {
+						ws->GetDispatch()->UnregisterWindowHandler(overlay.window);
+						api->XDestroyWindow(display, overlay.window);
+					}
+					if (overlay.colormap) api->XFreeColormap(display, overlay.colormap);
+					overlay.window = 0;
+					overlay.colormap = 0;
+					overlay.blt = 0;
+					overlay.buffer = 0;
+				}
+			public:
+				XDnDSessionSource(const Windows::DragDataDesc & drag, Windows::IDragCallback * cb)
+				{
+					host = 0; ws = 0; atoms = 0; overlay.window = 0; overlay.visual = 0;
+					overlay.colormap = 0; overlay.buffer = 0; overlay.blt = 0; active = true; dropped = false;
+					target = 0; target_proxy = 0; target_action = 0; target_version = 0;
+					if (!drag.data.format_mask | !drag.actions) throw InvalidArgumentException();
+					data.format_mask = 0;
+					actions = drag.actions;
+					user_data = drag.user_data;
+					callback = cb;
+					if (drag.data.format_mask & Windows::ClipboardDataFormatText) {
+						data.format_mask |= Windows::ClipboardDataFormatText;
+						data.text = drag.data.text;
+					}
+					if ((drag.data.format_mask & Windows::ClipboardDataFormatImage) && drag.data.image) {
+						data.format_mask |= Windows::ClipboardDataFormatImage;
+						data.image = oref<Picturae::Picture>::CreateOwned(new Picturae::Picture(drag.data.image));
+					}
+					if (drag.data.format_mask & Windows::ClipboardDataFormatFiles) {
+						data.format_mask |= Windows::ClipboardDataFormatFiles;
+						data.files = oref<array<string>>::CreateOwned(new array<string>(0x20));
+						if (drag.data.files) for (auto & f : *drag.data.files) data.files->Append(f);
+					}
+					if ((drag.data.format_mask & Windows::ClipboardDataFormatData) == Windows::ClipboardDataFormatData) {
+						data.format_mask |= Windows::ClipboardDataFormatData;
+						for (auto & f : drag.data.data) if (f.value) data.data.Append(f.key, oref<DataBlock>::CreateOwned(new DataBlock(*f.value)));
+					}
+				}
+				virtual ~XDnDSessionSource(void) override
+				{
+					if (!con) return;
+					auto api = con->GetAPI();
+					auto display = con->GetXDisplay();
+					_remove_overlay(api, display);
+				}
+				virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"X11 DnD Source"; ESSE_TRY_OUTRO(string()) }
+				virtual void HandleEvent(Window window, XEvent * event) noexcept override { if (event->type == Expose) con->GetAPI()->XCopyArea(con->GetXDisplay(), overlay.buffer, overlay.window, overlay.blt, 0, 0, overlay.size.x, overlay.size.y, 0, 0); }
+				virtual void HandleTimer(Window window, int timer) noexcept override {}
+				void HandleHostEvent(Window window, XEvent * event) noexcept
+				{
+					if (event->type == ClientMessage) {
+						if (event->xclient.message_type == atoms->xdnd_status && event->xclient.data.l[0] == target) {
+							if (event->xclient.data.l[1] & 1) target_action = event->xclient.data.l[4];
+							else target_action = 0;
+							if (target_action == atoms->xdnd_action_copy) host->SetCurrentCursor(SystemCursorDnDCopy);
+							else if (target_action == atoms->xdnd_action_move) host->SetCurrentCursor(SystemCursorDnDMove);
+							else host->SetCurrentCursor(SystemCursorDnDNone);
+						} else if (event->xclient.message_type == atoms->xdnd_finished && event->xclient.data.l[0] == target) {
+							if (((event->xclient.data.l[1] & 1) || target_version < 5) && event->xclient.data.l[2]) {
+								uint perform = 0;
+								if (event->xclient.data.l[2] == atoms->xdnd_action_copy) perform = Windows::DragActionCopy;
+								else if (event->xclient.data.l[2] == atoms->xdnd_action_move) perform = Windows::DragActionMove;
+								if (callback) callback->DragFinished(perform);
+								callback = 0;
+							}
+							EndDrop();
+						}
+					} else if (event->type == ButtonRelease) {
+						dropped = true;
+						auto time = event->xbutton.time;
+						auto api = con->GetAPI();
+						auto display = con->GetXDisplay();
+						_remove_overlay(api, display);
+						if (target && target_action) {
+							XEvent event;
+							Memory::ZeroMemory(&event.xclient, sizeof(event.xclient));
+							event.xclient.type = ClientMessage;
+							event.xclient.window = target_proxy;
+							event.xclient.message_type = atoms->xdnd_drop;
+							event.xclient.format = 32;
+							event.xclient.data.l[0] = host->GetHandle();
+							event.xclient.data.l[2] = time;
+							api->XSendEvent(display, target_proxy, False, 0, &event);
+							api->XFlush(display);
+						} else EndDrop();
+					} else if (event->type == MotionNotify) {
+						auto time = event->xmotion.time;
+						auto api = con->GetAPI();
+						auto display = con->GetXDisplay();
+						auto root = api->XRootWindow(display, api->XDefaultScreen(display));
+						Window root_return, child_return;
+						int root_x, root_y, child_x, child_y;
+						uint mask;
+						if (!api->XQueryPointer(display, root, &root_return, &child_return, &root_x, &root_y, &child_x, &child_y, &mask)) return;
+						if (!(mask & Button1Mask)) { if (!dropped) EndDrop(); return; }
+						Window new_target = 0, new_target_proxy = 0;
+						Atom new_target_version = 0;
+						while (true) {
+							Atom version;
+							Window proxy;
+							_read_window_caps(api, display, atoms, child_return, version, proxy);
+							if (version) {
+								new_target = child_return;
+								new_target_proxy = proxy;
+								new_target_version = version;
+								break;
+							}
+							Window read_root, read_parent, * read_children;
+							unsigned int number_of_children;
+							if (!api->XQueryTree(display, child_return, &read_root, &read_parent, &read_children, &number_of_children)) { read_children = 0; read_parent = 0; }
+							if (read_children) api->XFree(read_children);
+							if (!read_parent) break;
+							int parent_x, parent_y;
+							api->XTranslateCoordinates(display, child_return, read_parent, child_x, child_y, &parent_x, &parent_y, &read_root);
+							child_return = read_parent;
+							child_x = parent_x;
+							child_y = parent_y;
+						}
+						if (new_target != target) {
+							if (target) {
+								XEvent event;
+								Memory::ZeroMemory(&event.xclient, sizeof(event.xclient));
+								event.xclient.type = ClientMessage;
+								event.xclient.window = target_proxy;
+								event.xclient.message_type = atoms->xdnd_leave;
+								event.xclient.format = 32;
+								event.xclient.data.l[0] = host->GetHandle();
+								api->XSendEvent(display, target_proxy, False, 0, &event);
+							}
+							if (new_target_version < 3) {
+								target = target_proxy = 0;
+								target_action = 0;
+								target_version = 0;
+							} else {
+								target = new_target;
+								target_proxy = new_target_proxy ? new_target_proxy : new_target;
+								target_action = 0;
+								target_version = min(new_target_version, Atom(5));
+							}
+							if (target) {
+								XEvent event;
+								Memory::ZeroMemory(&event.xclient, sizeof(event.xclient));
+								event.xclient.type = ClientMessage;
+								event.xclient.window = target_proxy;
+								event.xclient.message_type = atoms->xdnd_enter;
+								event.xclient.format = 32;
+								event.xclient.data.l[0] = host->GetHandle();
+								event.xclient.data.l[1] = ((target_version & 0xFF) << 24) | 1;
+								int i = 2;
+								if (data.format_mask & Windows::ClipboardDataFormatText) {
+									if (i < 5) event.xclient.data.l[i++] = atoms->text_mime;
+									if (i < 5) event.xclient.data.l[i++] = atoms->text_mime_utf8;
+									if (i < 5) event.xclient.data.l[i++] = atoms->text;
+									if (i < 5) event.xclient.data.l[i++] = atoms->text_utf8;
+								}
+								if (data.format_mask & Windows::ClipboardDataFormatImage) if (i < 5) event.xclient.data.l[i++] = atoms->image_png;
+								if (data.format_mask & Windows::ClipboardDataFormatFiles) if (i < 5) event.xclient.data.l[i++] = atoms->text_uri_list;
+								if (data.format_mask & Windows::ClipboardDataFormatDataTypeless) if (i < 5) event.xclient.data.l[i++] = atoms->data_mime;
+								if (data.format_mask & Windows::ClipboardDataFormatDataFormat) if (i < 5) event.xclient.data.l[i++] = atoms->data_format_mime;
+								api->XSendEvent(display, target_proxy, False, 0, &event);
+							}
+							api->XFlush(display);
+						}
+						if (target) {
+							XEvent event;
+							Memory::ZeroMemory(&event.xclient, sizeof(event.xclient));
+							event.xclient.type = ClientMessage;
+							event.xclient.window = target_proxy;
+							event.xclient.message_type = atoms->xdnd_position;
+							event.xclient.format = 32;
+							event.xclient.data.l[0] = host->GetHandle();
+							event.xclient.data.l[2] = ((root_x & 0xFFFF) << 16) | (root_y & 0xFFFF);
+							event.xclient.data.l[3] = time;
+							event.xclient.data.l[4] = atoms->xdnd_action_ask;
+							api->XSendEvent(display, target_proxy, False, 0, &event);
+							api->XFlush(display);
+						}
+						if (overlay.window) con->GetAPI()->XMoveWindow(con->GetXDisplay(), overlay.window, root_x, root_y);
+					} else if (event->type == SelectionClear) {
+						EndDrop();
+					} else if (event->type == SelectionRequest) {
+						ws->ProcessSelectionRequest(event->xselectionrequest, data, atoms->xdnd_selection);
+					}
+				}
+				void Configure(IX11Window * hw, IX11WindowSystem * hws, Picturae::Picture * icon)
+				{
+					host = hw; ws = hws;
+					con = ws->GetConnection();
+					atoms = reinterpret_cast<XStandardAtoms *>(ws->GetStandardAtoms());
+					auto api = con->GetAPI();
+					auto display = con->GetXDisplay();
+					api->XSetSelectionOwner(display, atoms->xdnd_selection, host->GetHandle(), CurrentTime);
+					api->XGrabPointer(display, host->GetHandle(), False, ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, 0, 0, CurrentTime);
+					int actions_number = 0, type_number = 0;
+					Atom actions_atoms[2];
+					Atom type_atoms[8];
+					array<unichar8> actions_texts;
+					if (actions & Windows::DragActionCopy) {
+						actions_atoms[actions_number++] = atoms->xdnd_action_copy;
+						actions_texts.Append("Copy", 5);
+					}
+					if (actions & Windows::DragActionMove) {
+						actions_atoms[actions_number++] = atoms->xdnd_action_move;
+						actions_texts.Append("Move", 5);
+					}
+					if (data.format_mask & Windows::ClipboardDataFormatText) {
+						type_atoms[type_number++] = atoms->text_mime;
+						type_atoms[type_number++] = atoms->text_mime_utf8;
+						type_atoms[type_number++] = atoms->text;
+						type_atoms[type_number++] = atoms->text_utf8;
+					}
+					if (data.format_mask & Windows::ClipboardDataFormatImage) type_atoms[type_number++] = atoms->image_png;
+					if (data.format_mask & Windows::ClipboardDataFormatFiles) type_atoms[type_number++] = atoms->text_uri_list;
+					if (data.format_mask & Windows::ClipboardDataFormatDataTypeless) type_atoms[type_number++] = atoms->data_mime;
+					if (data.format_mask & Windows::ClipboardDataFormatDataFormat) type_atoms[type_number++] = atoms->data_format_mime;
+					api->XChangeProperty(display, host->GetHandle(), atoms->xdnd_action_ask_list, atoms->atom, 32, PropModeReplace, &actions_atoms, actions_number);
+					api->XChangeProperty(display, host->GetHandle(), atoms->xdnd_action_ask_desc, atoms->text, 8, PropModeReplace, actions_texts.GetBuffer(), actions_texts.GetLength());
+					api->XChangeProperty(display, host->GetHandle(), atoms->xdnd_type_list, atoms->atom, 32, PropModeReplace, &type_atoms, type_number);
+					if (icon && ws->GetXShapeAPI()) try {
+						auto root = api->XRootWindow(display, api->XDefaultScreen(display));
+						auto shape_api = ws->GetXShapeAPI();
+						int xver_hi, xver_lo;
+						if (!shape_api->XShapeQueryExtension(display, &xver_hi, &xver_lo)) throw NotImplementedException();
+						Window __root, __child;
+						int root_x, root_y, child_x, child_y;
+						uint mask;
+						if (!api->XQueryPointer(display, root, &__root, &__child, &root_x, &root_y, &child_x, &child_y, &mask)) throw InvalidStateException();
+						overlay.size.x = icon->GetDesc().width;
+						overlay.size.y = icon->GetDesc().height;
+						XSetWindowAttributes attr;
+						attr.override_redirect = true;
+						attr.save_under = true;
+						attr.event_mask = ExposureMask;
+						int use_depth = 0;
+						unsigned long use_mask = CWEventMask | CWSaveUnder | CWOverrideRedirect;
+						XVisualInfo use_info;
+						if (api->XMatchVisualInfo(display, api->XDefaultScreen(display), 32, TrueColor, &use_info)) {
+							use_depth = use_info.depth;
+							overlay.visual = use_info.visual;
+							attr.colormap = api->XCreateColormap(display, root, overlay.visual, AllocNone);
+							attr.background_pixel = attr.border_pixel = 0;
+							attr.bit_gravity = StaticGravity;
+							use_mask |= CWColormap | CWBorderPixel | CWBackPixel | CWBitGravity;
+						}
+						overlay.window = api->XCreateWindow(display, root, root_x, root_y, overlay.size.x, overlay.size.y, 0, use_depth, InputOutput, overlay.visual, use_mask, &attr);
+						if (!overlay.window) throw OutOfMemoryException();
+						if (!ws->GetDispatch()->RegisterWindowHandler(overlay.window, this)) throw OutOfMemoryException();
+						shape_api->XShapeCombineRectangles(display, overlay.window, ShapeInput, 0, 0, 0, 0, ShapeSet, YXBanded);
+						if (!overlay.visual) overlay.visual = api->XDefaultVisual(display, api->XDefaultScreen(display));
+						unsigned long wnd_pid = getpid();
+						api->XChangeProperty(display, overlay.window, atoms->net_wm_pid, atoms->cardinal, 32, PropModeReplace, reinterpret_cast<uint8 *>(&wnd_pid), 1);
+						api->XChangeProperty(display, overlay.window, atoms->net_wm_state, atoms->atom, 32, PropModeAppend, reinterpret_cast<uint8 *>(&atoms->net_wm_state_skip_taskbar), 1);
+						api->XChangeProperty(display, overlay.window, atoms->net_wm_state, atoms->atom, 32, PropModeAppend, reinterpret_cast<uint8 *>(&atoms->net_wm_state_skip_pager), 1);
+						api->XChangeProperty(display, overlay.window, atoms->wm_protocols, atoms->atom, 32, PropModeReplace, reinterpret_cast<uint8 *>(&atoms->wm_delete_window), 1);
+						overlay.blt = api->XCreateGC(display, overlay.window, 0, 0);
+						if (!overlay.blt) throw OutOfMemoryException();
+						overlay.buffer = LoadPixmap(con, icon);
+						if (!overlay.buffer) throw OutOfMemoryException();
+						api->XMapRaised(display, overlay.window);
+					} catch (...) { _remove_overlay(api, display); }
+				}
+				void EndDrop(void) noexcept
+				{
+					if (!active) return;
+					active = false;
+					auto api = con->GetAPI();
+					auto display = con->GetXDisplay();
+					_remove_overlay(api, display);
+					if (target) {
+						XEvent event;
+						Memory::ZeroMemory(&event.xclient, sizeof(event.xclient));
+						event.xclient.type = ClientMessage;
+						event.xclient.window = target_proxy;
+						event.xclient.message_type = atoms->xdnd_leave;
+						event.xclient.format = 32;
+						event.xclient.data.l[0] = host->GetHandle();
+						api->XSendEvent(display, target_proxy, False, 0, &event);
+					}
+					api->XUngrabPointer(display, CurrentTime);
+					api->XSetSelectionOwner(display, atoms->xdnd_selection, 0, CurrentTime);
+					api->XDeleteProperty(display, host->GetHandle(), atoms->xdnd_action_ask_list);
+					api->XDeleteProperty(display, host->GetHandle(), atoms->xdnd_action_ask_desc);
+					api->XDeleteProperty(display, host->GetHandle(), atoms->xdnd_type_list);
+					api->XFlush(display);
+					if (callback) callback->DragFinished(0);
+					oref<XDnDSessionSource> self = this;
+					host->SetCurrentDrag(0);
+					ws->SetCurrentDrag(0);
+				}
+				const Windows::ClipboardDataDesc & GetData(void) const noexcept { return data; }
+			};
+			class XDnDSessionTarget : public Windows::IDragSession
+			{
+				bool entered;
+				Index2 last_position;
+				uint formats, actions;
+				oref<XServerConnection> con;
+				IX11Window * host;
+				IX11WindowSystem * ws;
+				XStandardAtoms * atoms;
+			public:
+				XDnDSessionTarget(IX11Window * hw, IX11WindowSystem * hws, XClientMessageEvent & event) : entered(true), last_position(0, 0)
+				{
+					host = hw; ws = hws; formats = 0; actions = 0;
+					con = ws->GetConnection();
+					atoms = reinterpret_cast<XStandardAtoms *>(ws->GetStandardAtoms());
+					auto api = con->GetAPI();
+					auto display = con->GetXDisplay();
+					for (int i = 2; i < 5; i++) {
+						auto atom = event.data.l[i];
+						if (atom == atoms->text_mime || atom == atoms->text_mime_utf8 || atom == atoms->text || atom == atoms->text_utf8) formats |= Windows::ClipboardDataFormatText;
+						else if (atom == atoms->image_bmp || atom == atoms->image_jpeg || atom == atoms->image_png || atom == atoms->image_tiff || atom == atoms->image_webp) formats |= Windows::ClipboardDataFormatImage;
+						else if (atom == atoms->text_uri_list) formats |= Windows::ClipboardDataFormatFiles;
+						else if (atom == atoms->data_mime || atom == atoms->data) formats |= Windows::ClipboardDataFormatDataTypeless;
+						else if (atom == atoms->data_format_mime || atom == atoms->data_format) formats |= Windows::ClipboardDataFormatDataFormat;
+					}
+					if (event.data.l[1] & 1) {
+						Atom prop_fmt_type;
+						int prop_fmt_size;
+						unsigned long prop_fmt_length, prop_fmt_rem;
+						void * prop_fmt;
+						if (api->XGetWindowProperty(display, event.data.l[0], atoms->xdnd_type_list, 0, 0x100, False, AnyPropertyType, &prop_fmt_type, &prop_fmt_size, &prop_fmt_length, &prop_fmt_rem, &prop_fmt) != Success) prop_fmt = 0;
+						if (prop_fmt && prop_fmt_type == atoms->atom && prop_fmt_size == 32) {
+							for (int i = 0; i < prop_fmt_length; i++) {
+								auto atom = reinterpret_cast<Atom *>(prop_fmt)[i];
+								if (atom == atoms->text_mime || atom == atoms->text_mime_utf8 || atom == atoms->text || atom == atoms->text_utf8) formats |= Windows::ClipboardDataFormatText;
+								else if (atom == atoms->image_bmp || atom == atoms->image_jpeg || atom == atoms->image_png || atom == atoms->image_tiff || atom == atoms->image_webp) formats |= Windows::ClipboardDataFormatImage;
+								else if (atom == atoms->text_uri_list) formats |= Windows::ClipboardDataFormatFiles;
+								else if (atom == atoms->data_mime || atom == atoms->data) formats |= Windows::ClipboardDataFormatDataTypeless;
+								else if (atom == atoms->data_format_mime || atom == atoms->data_format) formats |= Windows::ClipboardDataFormatDataFormat;
+							}
+						}
+						if (prop_fmt) api->XFree(prop_fmt);
+					}
+					Atom prop_act_type;
+					int prop_act_size;
+					unsigned long prop_act_length, prop_act_rem;
+					void * prop_act;
+					if (api->XGetWindowProperty(display, event.data.l[0], atoms->xdnd_action_ask_list, 0, 0x100, False, AnyPropertyType, &prop_act_type, &prop_act_size, &prop_act_length, &prop_act_rem, &prop_act) != Success) prop_act = 0;
+					if (prop_act && prop_act_type == atoms->atom && prop_act_size == 32) {
+						for (int i = 0; i < prop_act_length; i++) {
+							auto atom = reinterpret_cast<Atom *>(prop_act)[i];
+							if (atom == atoms->xdnd_action_copy) actions |= Windows::DragActionCopy;
+							else if (atom == atoms->xdnd_action_move) actions |= Windows::DragActionMove;
+							else if (atom == atoms->xdnd_action_ask) actions |= Windows::DragActionCopy;
+						}
+					}
+					if (prop_act) api->XFree(prop_act);
+				}
+				virtual ~XDnDSessionTarget(void) override {}
+				virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"X11 DnD Session"; ESSE_TRY_OUTRO(string()) }
+				virtual uint GetActionsSupported(void) noexcept override { return actions; }
+				virtual uint ProbeDataFormats(uint format_mask) noexcept override { return formats & format_mask; }
+				virtual bool ReadData(uint format_mask, Windows::ClipboardDataDesc & dest) noexcept override
+				{
+					auto local = ws->GetCurrentDrag();
+					if (local) {
+						auto & source = static_cast<XDnDSessionSource *>(local)->GetData();
+						auto require = format_mask & source.format_mask;
+						dest.format_mask = 0;
+						if (require & Windows::ClipboardDataFormatText) {
+							dest.format_mask |= Windows::ClipboardDataFormatText;
+							dest.text = source.text;
+						} else dest.text = string();
+						if (require & Windows::ClipboardDataFormatImage) {
+							dest.format_mask |= Windows::ClipboardDataFormatImage;
+							dest.image = owrap(new Picturae::Picture(*source.image));
+						} else dest.image.Clear();
+						if (require & Windows::ClipboardDataFormatFiles) {
+							dest.format_mask |= Windows::ClipboardDataFormatFiles;
+							dest.files = owrap(new array<string>(*source.files));
+						} else dest.files.Clear();
+						if ((require & Windows::ClipboardDataFormatData) == Windows::ClipboardDataFormatData) {
+							dest.format_mask |= Windows::ClipboardDataFormatData;
+							for (auto & f : source.data) dest.data.Append(f.key, owrap(new DataBlock(*f.value)));
+						} else dest.data.Clear();
+						return dest.format_mask != 0;
+					} else return ws->ReadSelection(format_mask, dest, host->GetHandle(), atoms->xdnd_selection);
+				}
+				void SetAction(uint act) noexcept { actions = act; }
+				bool & GetEntered(void) noexcept { return entered; }
+				Index2 & GetLastPosition(void) noexcept { return last_position; }
+			};
+		private:
 			oref<XServerConnection> _con;
 			Windows::IWindowSystem * _system;
 			IX11WindowSystem * _system_x11;
 			XWindow * _parent;
 			object_array<XWindow> _children;
 			oref<Windows::ICursor> _cursor, _last_cursor_set;
+			oref<XDnDSessionSource> _active_source;
+			oref<XDnDSessionTarget> _active_target;
 			Windows::IWindowCallback * _callback;
 			Dictionary<oref<Windows::IWindowExtensionClass>, oref<Object>> _extensions;
 			XStandardAtoms * _atoms;
@@ -419,12 +874,11 @@ namespace ESSE
 			XIC _ic;
 			XIM _im;
 			bool _modal, _sizeble, _visible, _mapped, _allow_close;
-			bool _margins_unknown, _locked;
+			bool _locked;
 			int _override_z_order;
 			double _opacity;
 			Index2 _origin, _size;
 			Index2 _min, _max, _last_click_pos;
-			Rectangle _margins;
 			uint32 _modal_level, _effective_style, _popup_modal_mode;
 			uint32 _state_mask; // 1 - maximized horz, 2 - maximized vert, 4 - minimized, 8 - fullscreen
 			uint32 _last_click_mask, _last_click_time;
@@ -472,6 +926,7 @@ namespace ESSE
 						api->XSync(display, false);
 					}
 				} else if (_mapped && !must_be_visible) {
+					if (_active_source) _active_source->EndDrop();
 					_exit_popup_modal();
 					_mapped = false;
 					for (auto & c : _children) c._internal_show_window();
@@ -516,22 +971,24 @@ namespace ESSE
 			}
 			void _update_hints(void) noexcept
 			{
-				XSizeHints sz_hints;
-				sz_hints.flags = PMinSize | PMaxSize | PPosition;
-				sz_hints.x = _origin.x;
-				sz_hints.y = _origin.y;
-				if (_sizeble) {
-					sz_hints.min_width = max(_min.x, 1);
-					sz_hints.max_width = _max.x ? _max.x : 0x7FFF;
-					sz_hints.min_height = max(_min.y, 1);
-					sz_hints.max_height = _max.y ? _max.y : 0x7FFF;
-				} else {
-					sz_hints.min_width = sz_hints.max_width = _size.x;
-					sz_hints.min_height = sz_hints.max_height = _size.y;
-				}
 				auto api = _con->GetAPI();
 				auto display = _con->GetXDisplay();
-				api->XSetSizeHints(display, _window, &sz_hints, _atoms->wm_normal_hints);
+				auto sz_hints = api->XAllocSizeHints();
+				sz_hints->flags = PMinSize | PMaxSize | PPosition | PWinGravity;
+				sz_hints->x = _origin.x;
+				sz_hints->y = _origin.y;
+				sz_hints->win_gravity = StaticGravity;
+				if (_sizeble) {
+					sz_hints->min_width = max(_min.x, 1);
+					sz_hints->max_width = _max.x ? _max.x : 0x7FFF;
+					sz_hints->min_height = max(_min.y, 1);
+					sz_hints->max_height = _max.y ? _max.y : 0x7FFF;
+				} else {
+					sz_hints->min_width = sz_hints->max_width = _size.x;
+					sz_hints->min_height = sz_hints->max_height = _size.y;
+				}
+				api->XSetWMSizeHints(display, _window, sz_hints, _atoms->wm_normal_hints);
+				api->XFree(sz_hints);
 			}
 		public:
 			XWindow(Windows::IWindowSystem * system, const void * desc) : _system(system), _children(0x20)
@@ -546,9 +1003,7 @@ namespace ESSE
 				_override_z_order = 0;
 				_last_click_pos = Index2(0, 0);
 				_last_click_mask = _last_click_time = 0;
-				_margins = Rectangle(0, 0, 0, 0);
 				_visible = _mapped = false;
-				_margins_unknown = true;
 				_locked = false;
 				const Windows::CreateWindowDesc * main_desc = 0;
 				const Windows::CreateWindowDescBase * current_desc = reinterpret_cast<const Windows::CreateWindowDescBase *>(desc);
@@ -689,6 +1144,8 @@ namespace ESSE
 					hints.flags = InputHint;
 					hints.input = true;
 					api->XSetWMHints(display, _window, &hints);
+					wnd_type = 5;
+					api->XChangeProperty(display, _window, _atoms->xdnd_aware, _atoms->atom, 32, PropModeReplace, reinterpret_cast<uint8 *>(&wnd_type), 1);
 				}
 				if (main_desc->style & Windows::WindowStyleSetOpacity) SetOpacity(_opacity);
 				SetClassHint(api, display, _window);
@@ -753,17 +1210,82 @@ namespace ESSE
 					api->XResizeWindow(display, _window, _size.x, _size.y);
 					api->XFlush(display);
 				} else if (event->type == UnmapNotify) {
+					if (_active_source) _active_source->EndDrop();
 					_update_hints();
 					if (_callback) _callback->Shown(this, false);
 				} else if (event->type == ClientMessage) {
-					if (!_is_locked()) {
+					if (event->xclient.message_type == _atoms->wm_protocols) {
+						if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 						if (event->xclient.data.l[0] == _atoms->wm_delete_window && _allow_close) {
-							if (_callback) _callback->WindowClosed(this);
+							if (!_is_locked() && _callback) _callback->WindowClosed(this);
 						}
 						if (event->xclient.data.l[0] == _atoms->net_wm_context_help) {
-							if (_callback) _callback->WindowHelpRequired(this);
+							if (!_is_locked() && _callback) _callback->WindowHelpRequired(this);
 						}
-					}
+					} else if (event->xclient.message_type == _atoms->xdnd_enter) {
+						if (_active_target) {
+							if (_callback) _callback->DragLeft(this);
+							_active_target.Clear();
+						}
+						try { _active_target = owrap(new XDnDSessionTarget(this, _system_x11, event->xclient)); } catch (...) {}
+					} else if (event->xclient.message_type == _atoms->xdnd_position) {
+						uint action = 0;
+						if (_active_target) {
+							if (event->xclient.data.l[4] == _atoms->xdnd_action_copy) _active_target->SetAction(Windows::DragActionCopy);
+							else if (event->xclient.data.l[4] == _atoms->xdnd_action_move) _active_target->SetAction(Windows::DragActionMove);
+							int x = int16((event->xclient.data.l[2] >> 16) & 0xFFFF);
+							int y = int16(event->xclient.data.l[2] & 0xFFFF);
+							_active_target->GetLastPosition() = ConvertGlobalToClient(Index2(x, y));
+							if (_active_target->GetEntered()) {
+								_active_target->GetEntered() = false;
+								if (_callback) _callback->DragEntered(this, _active_target, _active_target->GetLastPosition());
+							}
+							if (_callback) action = _callback->DragMoved(this, _active_target, _active_target->GetLastPosition());
+						}
+						XEvent responce;
+						Memory::ZeroMemory(&responce.xclient, sizeof(responce.xclient));
+						responce.xclient.type = ClientMessage;
+						responce.xclient.window = event->xclient.data.l[0];
+						responce.xclient.message_type = _atoms->xdnd_status;
+						responce.xclient.format = 32;
+						responce.xclient.data.l[0] = window;
+						if (action & Windows::DragActionCopy) {
+							responce.xclient.data.l[1] |= 1;
+							responce.xclient.data.l[4] = _atoms->xdnd_action_copy;
+						} else if (action & Windows::DragActionMove) {
+							responce.xclient.data.l[1] |= 1;
+							responce.xclient.data.l[4] = _atoms->xdnd_action_move;
+						}
+						api->XSendEvent(display, event->xclient.data.l[0], False, 0, &responce);
+						api->XFlush(display);
+					} else if (event->xclient.message_type == _atoms->xdnd_leave) {
+						if (_active_target) {
+							if (_callback) _callback->DragLeft(this);
+							_active_target.Clear();
+						}
+					} else if (event->xclient.message_type == _atoms->xdnd_drop) {
+						uint action = 0;
+						if (_active_target) {
+							if (_callback) action = _callback->DragDropped(this, _active_target, _active_target->GetLastPosition());
+							_active_target.Clear();
+						}
+						XEvent responce;
+						Memory::ZeroMemory(&responce.xclient, sizeof(responce.xclient));
+						responce.xclient.type = ClientMessage;
+						responce.xclient.window = event->xclient.data.l[0];
+						responce.xclient.message_type = _atoms->xdnd_finished;
+						responce.xclient.format = 32;
+						responce.xclient.data.l[0] = window;
+						if (action & Windows::DragActionCopy) {
+							responce.xclient.data.l[1] |= 1;
+							responce.xclient.data.l[2] = _atoms->xdnd_action_copy;
+						} else if (action & Windows::DragActionMove) {
+							responce.xclient.data.l[1] |= 1;
+							responce.xclient.data.l[2] = _atoms->xdnd_action_move;
+						}
+						api->XSendEvent(display, event->xclient.data.l[0], False, 0, &responce);
+						api->XFlush(display);
+					} else if (_active_source) _active_source->HandleHostEvent(window, event);
 				} else if (event->type == ConfigureNotify) {
 					int dx = event->xconfigure.x - _origin.x;
 					int dy = event->xconfigure.y - _origin.y;
@@ -781,22 +1303,7 @@ namespace ESSE
 					}
 				} else if (event->type == PropertyNotify) {
 					auto ext_prop = _atoms->net_frame_extents;
-					if (event->xproperty.atom == ext_prop && event->xproperty.state == PropertyNewValue) {
-						unsigned long * pdata = 0;
-						Atom act_type;
-						int act_format;
-						unsigned long read, size;
-						api->XGetWindowProperty(display, _window, ext_prop, 0, __LONG_MAX__, false, AnyPropertyType, &act_type, &act_format, &read, &size, reinterpret_cast<void **>(&pdata));
-						_margins.left = (read >= 4) ? pdata[0] : 0;
-						_margins.top = (read >= 4) ? pdata[2] : 0;
-						_margins.right = (read >= 4) ? pdata[1] : 0;
-						_margins.bottom = (read >= 4) ? pdata[3] : 0;
-						api->XFree(pdata);
-						if (_margins_unknown) {
-							_margins_unknown = false;
-							api->XMoveWindow(display, _window, _origin.x - _margins.left, _origin.y - _margins.top);
-						}
-					} else if (event->xproperty.atom == _atoms->net_wm_state) {
+					if (event->xproperty.atom == _atoms->net_wm_state) {
 						_update_window_state();
 					}
 				} else if (event->type == FocusIn) {
@@ -820,7 +1327,7 @@ namespace ESSE
 					api->XUnsetICFocus(_ic);
 					if (_callback) { _callback->FocusChanged(this, false); _callback->WindowDeactivated(this); }
 				} else if (event->type == KeyPress) {
-					if (!_is_locked() && _callback) {
+					if (!_is_locked() && _callback && !_active_source) {
 						auto code = XKeyCodeToESSE(event->xkey.keycode);
 						uint mask = 0;
 						if (event->xkey.state & ShiftMask) mask |= VirtualKeyModifiers::Shift;
@@ -847,7 +1354,7 @@ namespace ESSE
 						}
 					}
 				} else if (event->type == KeyRelease) {
-					if (!_is_locked() && _callback) {
+					if (!_is_locked() && _callback && !_active_source) {
 						auto code = XKeyCodeToESSE(event->xkey.keycode);
 						uint mask = 0;
 						if (event->xkey.state & ShiftMask) mask |= VirtualKeyModifiers::Shift;
@@ -864,6 +1371,7 @@ namespace ESSE
 						int x, y;
 						if (api->XTranslateCoordinates(display, _window, root, event->xbutton.x, event->xbutton.y, &x, &y, &child) && child != _window && !_is_child_window_handle(child)) _exit_popup_modal();
 					}
+					if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 					if (!_is_locked() && _callback) {
 						auto pos = Index2(event->xbutton.x, event->xbutton.y);
 						uint32 mask = 0;
@@ -891,12 +1399,14 @@ namespace ESSE
 						}
 					}
 				} else if (event->type == ButtonRelease) {
+					if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 					if (!_is_locked() && _callback) {
 						auto pos = Index2(event->xbutton.x, event->xbutton.y);
 						if (event->xbutton.button == Button1) _callback->LeftButtonIsUp(this, pos);
 						else if (event->xbutton.button == Button3) _callback->RightButtonIsUp(this, pos);
 					}
 				} else if (event->type == MotionNotify) {
+					if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 					oref<Windows::ICursor> cursor;
 					if (!_is_locked() && _callback) {
 						auto pos = Index2(event->xmotion.x, event->xmotion.y);
@@ -908,10 +1418,11 @@ namespace ESSE
 					} else cursor = _system->GetSystemCursor(Windows::SystemCursorClass::Arrow);
 					if (cursor && _last_cursor_set.Inner() != cursor.Inner()) {
 						auto cursor_handle = Cursor(reinterpret_cast<uintptr>(cursor->GetOSHandle()));
-						api->XDefineCursor(display, _window, cursor_handle);
+						if (cursor_handle) api->XDefineCursor(display, _window, cursor_handle);
 						_last_cursor_set = cursor;
 					}
 				} else if (event->type == EnterNotify) {
+					if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 					if (!_is_locked() && _callback) {
 						uint mask = 0;
 						if (event->xmotion.state & Button1Mask) mask |= Windows::MouseLeftButtonIsDown;
@@ -919,12 +1430,17 @@ namespace ESSE
 						_callback->MouseEntered(this, mask);
 					}
 				} else if (event->type == LeaveNotify) {
+					if (_active_source) { _active_source->HandleHostEvent(window, event); return; }
 					if (!_is_locked() && _callback) {
 						uint mask = 0;
 						if (event->xmotion.state & Button1Mask) mask |= Windows::MouseLeftButtonIsDown;
 						if (event->xmotion.state & Button3Mask) mask |= Windows::MouseRightButtonIsDown;
 						_callback->MouseLeft(this, mask);
 					}
+				} else if (event->type == SelectionClear) {
+					if (_active_source) _active_source->HandleHostEvent(window, event);
+				} else if (event->type == SelectionRequest) {
+					if (_active_source) _active_source->HandleHostEvent(window, event);
 				}
 			}
 			virtual void HandleTimer(Window window, int timer) noexcept override { if (_callback) _callback->Timer(this, timer); }
@@ -960,12 +1476,24 @@ namespace ESSE
 			virtual bool IsWindowLocked(void) noexcept override { return _locked; }
 			virtual void LockWindow(bool lock) noexcept override { _locked = lock; for (auto & c : _children) c._internal_show_window(); }
 			virtual Windows::IWindowSystem * GetWindowSystem(void) noexcept override { return _system; }
+			virtual Object * GetCurrentDrag(void) noexcept override { return _active_source; }
+			virtual void SetCurrentDrag(Object * obj) noexcept override { _active_source = static_cast<XDnDSessionSource *>(obj); }
+			virtual void SetCurrentCursor(uint index) noexcept override
+			{
+				auto cursor = _system->GetSystemCursor(static_cast<Windows::SystemCursorClass>(index));
+				if (cursor && cursor->GetOSHandle() && cursor.Inner() != _last_cursor_set.Inner()) {
+					auto cursor_handle = Cursor(reinterpret_cast<uintptr>(cursor->GetOSHandle()));
+					if (cursor_handle) _con->GetAPI()->XDefineCursor(_con->GetXDisplay(), _window, cursor_handle);
+					_last_cursor_set = cursor;
+				}
+			}
 			virtual IWindow * GetParentWindow(void) noexcept override { return _parent; }
 			virtual IWindow * GetChildWindow(uintptr index) noexcept override { return &_children[index]; }
 			virtual uintptr GetChildrenCount(void) noexcept override { return _children.GetLength(); }
 			virtual void Destroy(void) noexcept override
 			{
 				if (!_window || (_modal_level && _modal_level < _system_x11->GetModalityLevel())) return;
+				if (_active_source) _active_source->EndDrop();
 				_exit_popup_modal();
 				if (_callback) _callback->Destroyed(this);
 				_callback = 0;
@@ -1045,7 +1573,7 @@ namespace ESSE
 					if (old_size != _size) _callback->WindowResized(this);
 				}
 				_update_hints();
-				api->XMoveWindow(display, _window, _origin.x - _margins.left, _origin.y - _margins.top);
+				api->XMoveWindow(display, _window, _origin.x, _origin.y);
 				api->XResizeWindow(display, _window, _size.x, _size.y);
 				api->XFlush(display);
 			}
@@ -1240,6 +1768,18 @@ namespace ESSE
 				auto dispatch = _system_x11->GetDispatch();
 				dispatch->DestroyTimer(_window, id);
 				if (period) dispatch->CreateTimer(_window, id, period);
+			}
+			virtual bool LaunchDragSession(const Windows::DragDataDesc & data, Windows::IDragCallback * callback) noexcept override
+			{
+				if (_active_source || _active_target || _system_x11->GetCurrentDrag()) return false;
+				try {
+					auto drag = oref<XDnDSessionSource>::CreateOwned(new XDnDSessionSource(data, callback));
+					drag->Configure(this, _system_x11, data.icon);
+					_active_source = drag;
+					_system_x11->SetCurrentDrag(drag);
+					if (callback) callback->DragStarted(this, data);
+					return true;
+				} catch (...) { return false; }
 			}
 			virtual bool AddExtension(Object * ext, Windows::IWindowExtensionClass * extcls) noexcept override
 			{
@@ -1546,6 +2086,7 @@ namespace ESSE
 				Release();
 			}
 		public:
+			static string MakeUnixSocketPath(const string & app, const string & auth) { return U"/run/user/" + string(getuid()) + U"/eipc." + auth + U"." + app; }
 			XIPCClient(Windows::IWindowSystem * system, const string & app, const string & auth) : _system(system), _serial(1), _requests(0x10)
 			{
 				_status = Windows::IPCStatus::Unknown;
@@ -1553,7 +2094,7 @@ namespace ESSE
 				auto x11_ws = reinterpret_cast<IX11WindowSystem *>(system->DynamicCast(Linux::Classes::X11_WindowSystem, ectx));
 				ErrorThrow(ectx);
 				_dispatch = x11_ws->GetDispatch();
-				ucs1_string path = U"/tmp/eipc." + auth + U"." + app;
+				ucs1_string path = MakeUnixSocketPath(app, auth);
 				_socket = socket(AF_UNIX, SOCK_STREAM, 0);
 				if (_socket < 0) throw Exception();
 				struct sockaddr_un addr;
@@ -1585,7 +2126,7 @@ namespace ESSE
 					if (received0 != 8) throw received0;
 					uintptr received1 = IO::ReadFile(hfile, &resp_hdr, 8);
 					if (received1 != 8) throw received1;
-					if (resp_hdr & 0x8000000000000000UL) status = Windows::IPCStatus::Accepted; else status = Windows::IPCStatus::Discarded;
+					if (resp_hdr & 0x8000000000000000UL) status = Windows::IPCStatus::Succeeded; else status = Windows::IPCStatus::Discarded;
 					uint32 data_size = resp_hdr & 0xFFFFFFFF;
 					oref<DataBlock> data;
 					if (data_size) {
@@ -1601,7 +2142,7 @@ namespace ESSE
 						auto & req = _requests[idx];
 						if (req.status) *req.status = status;
 						if (req.result) {
-							if (!data && status == Windows::IPCStatus::Accepted) data = owrap(new DataBlock(1));
+							if (!data && status == Windows::IPCStatus::Succeeded) data = owrap(new DataBlock(1));
 							*req.result = data;
 						}
 						if (req.task) req.task->DoTask(_system);
@@ -1617,7 +2158,7 @@ namespace ESSE
 					_cancel_requests(Windows::IPCStatus::InternalError);
 				}
 			}
-			virtual bool SendData(const string & verb, const void * data, uintptr length, IDispatchTask * on_responce, Windows::IPCStatus * result) noexcept override
+			virtual bool SendMessage(const string & verb, const void * data_in, uintptr length_in, IDispatchTask * on_responce, Windows::IPCStatus * status, oref<DataBlock> * data_out) noexcept override
 			{
 				if (_status == Windows::IPCStatus::InternalError || _status == Windows::IPCStatus::ServerClosed) return false;
 				try {
@@ -1625,44 +2166,20 @@ namespace ESSE
 					req.serial = _serial;
 					req.retain.SetRetain(this);
 					req.task.SetRetain(on_responce);
-					req.status = result;
-					req.result = 0;
+					req.status = status;
+					req.result = data_out;
 					_requests << req;
 					_serial++;
 				} catch (...) { return false; }
 				try {
 					auto verb_block = EncodeString(verb, Unicode::Encoding::UTF8, true);
-					if (verb_block->GetLength() > 0xFF || length > 0x7FFFFFFF) throw InvalidArgumentException();
-					uint64 hdr = length | (uint64(verb_block->GetLength()) << 32);
+					if (verb_block->GetLength() > 0xFF || length_in > 0x7FFFFFFF) throw InvalidArgumentException();
+					uint64 hdr = length_in | (uint64(verb_block->GetLength()) << 32);
 					handle hfile = handle(intptr(_socket));
 					IO::WriteFile(hfile, &_requests.LastElement().serial, 8);
 					IO::WriteFile(hfile, &hdr, 8);
 					IO::WriteFile(hfile, verb_block->GetBuffer(), verb_block->GetLength());
-					if (length) IO::WriteFile(hfile, data, length);
-				} catch (...) { _requests.RemoveLast(); return false; }
-				return true;
-			}
-			virtual bool RequireData(const string & verb, IDispatchTask * on_responce, Windows::IPCStatus * result, oref<DataBlock> * data) noexcept override
-			{
-				if (_status == Windows::IPCStatus::InternalError || _status == Windows::IPCStatus::ServerClosed) return false;
-				try {
-					_request req;
-					req.serial = _serial;
-					req.retain.SetRetain(this);
-					req.task.SetRetain(on_responce);
-					req.status = result;
-					req.result = data;
-					_requests << req;
-					_serial++;
-				} catch (...) { return false; }
-				try {
-					auto verb_block = EncodeString(verb, Unicode::Encoding::UTF8, true);
-					if (verb_block->GetLength() > 0xFF) throw InvalidArgumentException();
-					uint64 hdr = 0x8000000000000000UL | (uint64(verb_block->GetLength()) << 32);
-					handle hfile = handle(intptr(_socket));
-					IO::WriteFile(hfile, &_requests.LastElement().serial, 8);
-					IO::WriteFile(hfile, &hdr, 8);
-					IO::WriteFile(hfile, verb_block->GetBuffer(), verb_block->GetLength());
+					if (length_in) IO::WriteFile(hfile, data_in, length_in);
 				} catch (...) { _requests.RemoveLast(); return false; }
 				return true;
 			}
@@ -1712,21 +2229,13 @@ namespace ESSE
 					}
 					auto verb_str = string(verb->GetBuffer(), verb->GetLength(), Unicode::Encoding::UTF8);
 					auto callback = _system->GetCallback();
-					if (hdr & 0x8000000000000000UL) {
-						oref<DataBlock> resp;
-						if (callback) resp = callback->IPCSendData(hfile, verb_str);
-						hdr = resp ? 0x8000000000000000UL : 0;
-						if (resp) hdr |= resp->GetLength();
-						IO::WriteFile(hfile, &serial, 8);
-						IO::WriteFile(hfile, &hdr, 8);
-						if (resp) IO::WriteFile(hfile, resp->GetBuffer(), resp->GetLength());
-					} else {
-						bool resp = false;
-						if (callback) resp = callback->IPCReceiveData(hfile, verb_str, main->GetBuffer(), main->GetLength());
-						hdr = resp ? 0x8000000000000000UL : 0;
-						IO::WriteFile(hfile, &serial, 8);
-						IO::WriteFile(hfile, &hdr, 8);
-					}
+					oref<DataBlock> resp;
+					if (callback) resp = callback->IPCClientMessage(hfile, verb_str, main->GetBuffer(), main->GetLength());
+					hdr = resp ? 0x8000000000000000UL : 0;
+					if (resp) hdr |= resp->GetLength();
+					IO::WriteFile(hfile, &serial, 8);
+					IO::WriteFile(hfile, &hdr, 8);
+					if (resp) IO::WriteFile(hfile, resp->GetBuffer(), resp->GetLength());
 				} catch (...) { shutdown(_socket, SHUT_RDWR); Release(); }
 			}
 		};
@@ -1746,12 +2255,14 @@ namespace ESSE
 			oref<XRANDRAPI> _xrandr_api;
 			oref<XRenderAPI> _xrender_api;
 			oref<XCursorAPI> _xcursor_api;
+			oref<XShapeAPI> _xshape_api;
 			oref<XServerConnection> _con;
 			oref<XDispatch> _dispatch;
 			oref<DBus::IConnection> _dbus;
 			oref<Semaphore> _ibus_sync;
 			oref<Thread> _signal_thread;
 			oref<Linux::IMenuService> _menu_service;
+			oref<Object> _drag_object;
 			handle _ibus_in, _ibus_out;
 			int _ebus;
 			ucs1_string _ebus_socket_name;
@@ -1781,10 +2292,14 @@ namespace ESSE
 					auto status = sigwait(&set, &number);
 					if (!status) {
 						if (number != SIGINT && number != SIGQUIT && number != SIGHUP && number != SIGTERM) continue;
+						Memory::AcquireRootLock();
+						if (Linux::GetShutdownFlag()) { Memory::ReleaseRootLock(); return 0; }
+						auto ws = Windows::GetWindowSystem();
+						if (!ws) _exit(-1);
+						oref<Windows::IWindowSystem> wsr = ws;
+						Memory::ReleaseRootLock();
 						try {
-							auto ws = Windows::GetWindowSystem();
-							if (!ws) _exit(-1);
-							ws->SubmitTask(CreateFunctionalTask([]() {
+							wsr->SubmitTask(CreateFunctionalTask([]() {
 								auto callback = Windows::GetWindowSystem()->GetCallback();
 								if (callback && callback->AcceptsApplicationCommand(Windows::ApplicationCommand::Terminate)) {
 									callback->HandleApplicationCommand(Windows::ApplicationCommand::Terminate, string());
@@ -1798,6 +2313,7 @@ namespace ESSE
 			bool _init_standard_atoms(void) noexcept
 			{
 				DEFINE_ATOM_LOAD(net_wm_pid, "_NET_WM_PID")
+				DEFINE_ATOM_LOAD(selection_delete, "DELETE")
 				DEFINE_ATOM_LOAD(cardinal, "CARDINAL")
 				DEFINE_ATOM_LOAD(clipboard, "CLIPBOARD")
 				DEFINE_ATOM_LOAD(incremental, "INCR")
@@ -1805,6 +2321,8 @@ namespace ESSE
 				DEFINE_ATOM_LOAD(targets, "TARGETS")
 				DEFINE_ATOM_LOAD(text, "STRING")
 				DEFINE_ATOM_LOAD(text_utf8, "UTF8_STRING")
+				DEFINE_ATOM_LOAD(text_mime, "text/plain")
+				DEFINE_ATOM_LOAD(text_mime_utf8, "text/plain;charset=utf-8")
 				DEFINE_ATOM_LOAD(text_uri_list, "text/uri-list")
 				DEFINE_ATOM_LOAD(image_png, "image/png")
 				DEFINE_ATOM_LOAD(image_jpeg, "image/jpeg")
@@ -1813,6 +2331,8 @@ namespace ESSE
 				DEFINE_ATOM_LOAD(image_bmp, "image/bmp")
 				DEFINE_ATOM_LOAD(data, "ESSE.Data")
 				DEFINE_ATOM_LOAD(data_format, "ESSE.EfformatioDatorum")
+				DEFINE_ATOM_LOAD(data_mime, "application/vnd.esse.data")
+				DEFINE_ATOM_LOAD(data_format_mime, "application/vnd.esse.efformatio")
 				DEFINE_ATOM_LOAD(net_wm_state, "_NET_WM_STATE")
 				DEFINE_ATOM_LOAD(net_wm_state_maximized_horz, "_NET_WM_STATE_MAXIMIZED_HORZ")
 				DEFINE_ATOM_LOAD(net_wm_state_maximized_vert, "_NET_WM_STATE_MAXIMIZED_VERT")
@@ -1849,6 +2369,22 @@ namespace ESSE
 				DEFINE_ATOM_LOAD(xembed_info, "_XEMBED_INFO")
 				DEFINE_ATOM_LOAD(net_system_tray_opcode, "_NET_SYSTEM_TRAY_OPCODE")
 				DEFINE_ATOM_LOAD(net_system_tray_visual, "_NET_SYSTEM_TRAY_VISUAL")
+				DEFINE_ATOM_LOAD(xdnd_aware, "XdndAware")
+				DEFINE_ATOM_LOAD(xdnd_proxy, "XdndProxy")
+				DEFINE_ATOM_LOAD(xdnd_selection, "XdndSelection")
+				DEFINE_ATOM_LOAD(xdnd_type_list, "XdndTypeList")
+				DEFINE_ATOM_LOAD(xdnd_action_copy, "XdndActionCopy")
+				DEFINE_ATOM_LOAD(xdnd_action_move, "XdndActionMove")
+				DEFINE_ATOM_LOAD(xdnd_action_ask, "XdndActionAsk")
+				DEFINE_ATOM_LOAD(xdnd_action_private, "XdndActionPrivate")
+				DEFINE_ATOM_LOAD(xdnd_action_ask_list, "XdndActionList")
+				DEFINE_ATOM_LOAD(xdnd_action_ask_desc, "XdndActionDescription")
+				DEFINE_ATOM_LOAD(xdnd_enter, "XdndEnter")
+				DEFINE_ATOM_LOAD(xdnd_position, "XdndPosition")
+				DEFINE_ATOM_LOAD(xdnd_status, "XdndStatus")
+				DEFINE_ATOM_LOAD(xdnd_leave, "XdndLeave")
+				DEFINE_ATOM_LOAD(xdnd_drop, "XdndDrop")
+				DEFINE_ATOM_LOAD(xdnd_finished, "XdndFinished")
 				return true;
 			}
 			bool _xrandr_is_available(void) noexcept
@@ -2048,45 +2584,57 @@ namespace ESSE
 					_xlib_api->XFlush(display);
 				}
 			}
-			void _clipboard_respond(XSelectionRequestEvent * event) noexcept
+			void _clipboard_respond(XSelectionRequestEvent * event, const Windows::ClipboardDataDesc & clipboard, Atom selection) noexcept
 			{
-				if (_clipboard.format_mask && event->selection == _atoms.clipboard) {
+				if (clipboard.format_mask && event->selection == selection) {
 					try {
 						if (event->target == _atoms.targets) {
 							array<Atom> atoms(0x10);
 							atoms << _atoms.targets;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatText) atoms << _atoms.text_utf8 << _atoms.text;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatImage) atoms << _atoms.image_png;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatFiles) atoms << _atoms.text_uri_list;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataTypeless) atoms << _atoms.data;
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataFormat) atoms << _atoms.data_format;
+							if (clipboard.format_mask & Windows::ClipboardDataFormatText) atoms << _atoms.text_utf8 << _atoms.text;
+							if (clipboard.format_mask & Windows::ClipboardDataFormatImage) atoms << _atoms.image_png;
+							if (clipboard.format_mask & Windows::ClipboardDataFormatFiles) atoms << _atoms.text_uri_list;
+							if (clipboard.format_mask & Windows::ClipboardDataFormatDataTypeless) atoms << _atoms.data;
+							if (clipboard.format_mask & Windows::ClipboardDataFormatDataFormat) atoms << _atoms.data_format;
 							_clipboard_respond_atoms(event, atoms);
-						} else if (event->target == _atoms.text || event->target == _atoms.text_utf8) {
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatText) {
-								auto result = EncodeString(_clipboard.text, Unicode::Encoding::UTF8, false);
+						} else if (event->target == _atoms.text || event->target == _atoms.text_utf8 || event->target == _atoms.text_mime || event->target == _atoms.text_mime_utf8) {
+							if (clipboard.format_mask & Windows::ClipboardDataFormatText) {
+								auto result = EncodeString(clipboard.text, Unicode::Encoding::UTF8, false);
 								_clipboard_respond_data(event, *result);
 							} else _clipboard_respond_na(event);
 						} else if (event->target == _atoms.image_png) {
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatImage) {
+							if (clipboard.format_mask & Windows::ClipboardDataFormatImage) {
 								auto stream = MemoryStream::Create(0x10000);
-								Picturae::Encode(stream, _clipboard.image, Picturae::ImageFormatPNG);
+								Picturae::Encode(stream, clipboard.image, Picturae::ImageFormatPNG);
 								_clipboard_respond_data(event, *stream->GetStorage());
 							} else _clipboard_respond_na(event);
 						} else if (event->target == _atoms.text_uri_list) {
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatFiles) {
+							if (clipboard.format_mask & Windows::ClipboardDataFormatFiles) {
 								string uris;
-								for (auto & f : *_clipboard.files) uris += U"file://" + _uri_path_transform(f, false) + U"\r\n";
+								for (auto & f : *clipboard.files) uris += U"file://" + _uri_path_transform(f, false) + U"\r\n";
 								auto result = EncodeString(uris, Unicode::Encoding::UTF8, false);
 								_clipboard_respond_data(event, *result);
-							}
-						} else if (event->target == _atoms.data) {
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataTypeless) {
-								_clipboard_respond_data(event, *_clipboard.data);
 							} else _clipboard_respond_na(event);
-						} else if (event->target == _atoms.data_format) {
-							if (_clipboard.format_mask & Windows::ClipboardDataFormatDataFormat) {
-								auto result = EncodeString(_clipboard.data_format, Unicode::Encoding::UTF8, false);
-								_clipboard_respond_data(event, *result);
+						} else if (event->target == _atoms.data || event->target == _atoms.data_mime) {
+							if (clipboard.format_mask & Windows::ClipboardDataFormatDataTypeless) {
+								uintptr size = 0;
+								for (auto & f : clipboard.data) size += 4 + f.value->GetLength();
+								auto data = owrap(new DataBlock(size));
+								for (auto & f : clipboard.data) {
+									uint bsize = f.value->GetLength();
+									data->Append(reinterpret_cast<uint8 *>(&bsize), 4);
+									data->Append(*f.value);
+								}
+								_clipboard_respond_data(event, *data);
+							} else _clipboard_respond_na(event);
+						} else if (event->target == _atoms.data_format || event->target == _atoms.data_format_mime) {
+							if (clipboard.format_mask & Windows::ClipboardDataFormatDataFormat) {
+								auto data = owrap(new DataBlock(0x100));
+								for (auto & f : clipboard.data) {
+									auto format = EncodeString(f.key, Unicode::Encoding::UTF8, true);
+									data->Append(*format);
+								}
+								_clipboard_respond_data(event, *data);
 							} else _clipboard_respond_na(event);
 						} else _clipboard_respond_na(event);
 					} catch (...) { _clipboard_respond_na(event); }
@@ -2102,22 +2650,22 @@ namespace ESSE
 					} else return 0;
 				}
 			}
-			Atom _clipboard_send_request(Atom proptype) noexcept
+			Atom _clipboard_send_request(Atom proptype, Window service, Atom selection) noexcept
 			{
 				XEvent event;
-				_xlib_api->XConvertSelection(_con->GetXDisplay(), _atoms.clipboard, proptype, _atoms.clipboard, _service_window, CurrentTime);
+				_xlib_api->XConvertSelection(_con->GetXDisplay(), selection, proptype, selection, service, CurrentTime);
 				if (_dispatch->WaitForEvent(&event, SelectionNotify, 1000)) return event.xselection.property; else return 0;
 			}
-			oref<DataBlock> _clipboard_query_property(Atom proptype, bool bulk = false) noexcept
+			oref<DataBlock> _clipboard_query_property(Atom proptype, Window service, Atom selection, bool bulk = false) noexcept
 			{
-				auto prop = bulk ? _clipboard_wait_for_responce(_atoms.clipboard) : _clipboard_send_request(proptype);
+				auto prop = bulk ? _clipboard_wait_for_responce(selection) : _clipboard_send_request(proptype, service, selection);
 				if (prop) {
 					void * pdata = 0;
 					Atom act_type;
 					int act_format;
 					unsigned long read, size;
 					if (!bulk) _dispatch->DrainEvent(PropertyNotify);
-					_xlib_api->XGetWindowProperty(_con->GetXDisplay(), _service_window, prop, 0, __LONG_MAX__, true, AnyPropertyType, &act_type, &act_format, &read, &size, &pdata);
+					_xlib_api->XGetWindowProperty(_con->GetXDisplay(), service, prop, 0, __LONG_MAX__, true, AnyPropertyType, &act_type, &act_format, &read, &size, &pdata);
 					if (act_type == _atoms.atom) {
 						oref<DataBlock> data;
 						try {
@@ -2141,7 +2689,7 @@ namespace ESSE
 						oref<DataBlock> data;
 						try { data = owrap(new DataBlock(1)); } catch (...) { return 0; }
 						while (true) {
-							auto block = _clipboard_query_property(proptype, true);
+							auto block = _clipboard_query_property(proptype, service, selection, true);
 							if (!block) return 0;
 							if (!block->GetLength()) break;
 							try { data->Append(block->GetBuffer(), block->GetLength()); } catch (...) { return 0; }
@@ -2166,6 +2714,7 @@ namespace ESSE
 				try { _xrandr_api = owrap(new XRANDRAPI); } catch (...) {}
 				try { _xrender_api = owrap(new XRenderAPI); } catch (...) {}
 				try { _xcursor_api = owrap(new XCursorAPI); } catch (...) {}
+				try { _xshape_api = owrap(new XShapeAPI); } catch (...) {}
 				_ibus_sync = CreateSemaphore(1);
 				if (!_ibus_sync) throw OutOfMemoryException();
 				sigset_t set;
@@ -2197,6 +2746,19 @@ namespace ESSE
 					_cursors.Append(uint(Windows::SystemCursorClass::SizeLeftDownRightUp), owrap(new XCursorImage(_con, _xcursor_api, "nesw-resize")));
 					_cursors.Append(uint(Windows::SystemCursorClass::SizeAll), owrap(new XCursorImage(_con, XC_fleur)));
 					_cursors.Append(uint(Windows::SystemCursorClass::Null), owrap(new XCursorImage(_con, _xrender_api, zero_image)));
+					auto dnd_copy = owrap(new XCursorImage(_con, _xcursor_api, "dnd-copy"));
+					if (!dnd_copy->GetXHandle()) dnd_copy = owrap(new XCursorImage(_con, _xcursor_api, "copy"));
+					if (!dnd_copy->GetXHandle()) dnd_copy = owrap(new XCursorImage(_con, _xcursor_api, "move"));
+					if (!dnd_copy->GetXHandle()) dnd_copy = owrap(new XCursorImage(_con, XC_arrow));
+					auto dnd_move = owrap(new XCursorImage(_con, _xcursor_api, "link"));
+					if (!dnd_move->GetXHandle()) dnd_move = owrap(new XCursorImage(_con, _xcursor_api, "alias"));
+					if (!dnd_move->GetXHandle()) dnd_move = dnd_copy;
+					auto dnd_none = owrap(new XCursorImage(_con, _xcursor_api, "no-drop"));
+					if (!dnd_none->GetXHandle()) dnd_none = owrap(new XCursorImage(_con, _xcursor_api, "not-allowed"));
+					if (!dnd_none->GetXHandle()) dnd_none = owrap(new XCursorImage(_con, XC_arrow));
+					_cursors.Append(SystemCursorDnDNone, dnd_none);
+					_cursors.Append(SystemCursorDnDCopy, dnd_copy);
+					_cursors.Append(SystemCursorDnDMove, dnd_move);
 				} catch (...) {}
 				try {
 					const void * resdata;
@@ -2276,10 +2838,13 @@ namespace ESSE
 			virtual XDispatch * GetDispatch(void) noexcept override { return _dispatch; }
 			virtual XServerConnection * GetConnection(void) noexcept override { return _con; }
 			virtual XRenderAPI * GetXRenderAPI(void) noexcept override { return _xrender_api; }
+			virtual XShapeAPI * GetXShapeAPI(void) noexcept override { return _xshape_api; }
 			virtual DBus::IConnection * GetDBus(void) noexcept override { return _dbus; }
 			virtual Picturae::Image * GetApplicationIcon(void) noexcept override { return _appicon; }
 			virtual Window GetServiceWindow(void) noexcept override { return _service_window; }
 			virtual void * GetStandardAtoms(void) noexcept override { return &_atoms; }
+			virtual Object * GetCurrentDrag(void) noexcept override { return _drag_object; }
+			virtual void SetCurrentDrag(Object * obj) noexcept override { _drag_object = obj; }
 			virtual void SubmitTaskE(IDispatchTask * task, ErrorContext & ectx) noexcept override { SubmitTasksE(&task, 1, ectx); }
 			virtual void SubmitTasksE(IDispatchTask ** tasks, uintptr count, ErrorContext & ectx) noexcept override
 			{
@@ -2301,12 +2866,11 @@ namespace ESSE
 				if (event->type == SelectionClear) {
 					_clipboard.format_mask = 0;
 					_clipboard.text = string();
-					_clipboard.data_format = string();
 					_clipboard.image.Clear();
 					_clipboard.files.Clear();
 					_clipboard.data.Clear();
 				} else if (event->type == SelectionRequest) {
-					_clipboard_respond(&event->xselectionrequest);
+					ProcessSelectionRequest(event->xselectionrequest, _clipboard, _atoms.clipboard);
 				} else if (event->type == KeyPress) {
 					if (_callback) for (auto & hk : _hotkeys) if (hk.vkc == event->xkey.keycode && hk.vkm == (event->xkey.state & _xkb.active_mod_mask)) {
 						_callback->HandleHotKeyEvent(hk.id);
@@ -2534,7 +3098,7 @@ namespace ESSE
 				if (owner == _service_window) {
 					return _clipboard.format_mask;
 				} else {
-					auto targets = _clipboard_query_property(_atoms.targets);
+					auto targets = _clipboard_query_property(_atoms.targets, _service_window, _atoms.clipboard);
 					if (!targets) return 0;
 					intptr num_atoms = targets->GetLength() / sizeof(Atom);
 					auto atoms = reinterpret_cast<Atom *>(targets->GetBuffer());
@@ -2569,92 +3133,106 @@ namespace ESSE
 							dest.files = _clipboard.files ? owrap(new array<string>(*_clipboard.files)) : oref<array<string>>();
 							dest.format_mask |= Windows::ClipboardDataFormatFiles;
 						}
-						if (_clipboard.format_mask & format_mask & Windows::ClipboardDataFormatDataTypeless) {
-							dest.data = _clipboard.data ? owrap(new DataBlock(*_clipboard.data)) : oref<DataBlock>();
-							dest.format_mask |= Windows::ClipboardDataFormatDataTypeless;
-						}
 						if (_clipboard.format_mask & format_mask & Windows::ClipboardDataFormatDataFormat) {
-							dest.data_format = _clipboard.data_format;
+							dest.data.Clear();
+							if (_clipboard.format_mask & format_mask & Windows::ClipboardDataFormatDataTypeless) {
+								for (auto & f : _clipboard.data) dest.data.Append(f.key, owrap(new DataBlock(*f.value)));
+								dest.format_mask |= Windows::ClipboardDataFormatDataTypeless;
+							} else for (auto & f : _clipboard.data) dest.data.Append(f.key, 0);
 							dest.format_mask |= Windows::ClipboardDataFormatDataFormat;
 						}
 					} catch (...) { return false; }
-				} else {
-					try {
-						if (format_mask & Windows::ClipboardDataFormatText) {
-							auto data = _clipboard_query_property(_atoms.text_utf8);
-							if (!data) data = _clipboard_query_property(_atoms.text);
-							if (data) {
-								dest.text = string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8);
-								dest.format_mask |= Windows::ClipboardDataFormatText;
-							}
-						}
-						if (format_mask & Windows::ClipboardDataFormatImage) {
-							auto data = _clipboard_query_property(_atoms.image_png);
-							if (!data) data = _clipboard_query_property(_atoms.image_jpeg);
-							if (!data) data = _clipboard_query_property(_atoms.image_tiff);
-							if (!data) data = _clipboard_query_property(_atoms.image_webp);
-							if (!data) data = _clipboard_query_property(_atoms.image_bmp);
-							if (data) {
-								dest.image = Picturae::DecodePicture(StaticMemoryStream::Create(data->GetBuffer(), data->GetLength()));
-								dest.format_mask |= Windows::ClipboardDataFormatImage;
-							}
-						}
-						if (format_mask & Windows::ClipboardDataFormatFiles) {
-							auto data = _clipboard_query_property(_atoms.text_uri_list);
-							if (data) {
-								auto uri = SplitString(string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8).Replace(U'\r', string()), U'\n');
-								dest.files = owrap(new array<string>(uri.GetLength()));
-								for (auto & u : uri) if (u.Substring(0, 7) == U"file://") dest.files->Append(_uri_path_transform(u.Substring(7, -1), true));
-								dest.format_mask |= Windows::ClipboardDataFormatFiles;
-							}
-						}
-						if (format_mask & Windows::ClipboardDataFormatDataTypeless) {
-							auto data = _clipboard_query_property(_atoms.data);
-							if (data) {
-								dest.data = data;
-								dest.format_mask |= Windows::ClipboardDataFormatDataTypeless;
-							}
-						}
-						if (format_mask & Windows::ClipboardDataFormatDataFormat) {
-							auto data = _clipboard_query_property(_atoms.data_format);
-							if (data) {
-								dest.data_format = string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8);
-								dest.format_mask |= Windows::ClipboardDataFormatDataFormat;
-							}
-						}
-					} catch (...) { return false; }
-				}
-				return dest.format_mask != 0;
+					return dest.format_mask != 0;
+				} else return ReadSelection(format_mask, dest, _service_window, _atoms.clipboard);
 			}
-			virtual bool WriteClipboard(const Windows::ClipboardDataDesc & dest) noexcept override
+			virtual bool WriteClipboard(const Windows::ClipboardDataDesc & src) noexcept override
 			{
-				if (!dest.format_mask) return false;
+				if (!src.format_mask) return false;
 				uint mask_written = 0;
 				try {
-					if (dest.format_mask & Windows::ClipboardDataFormatText) {
-						_clipboard.text = dest.text;
+					if (src.format_mask & Windows::ClipboardDataFormatText) {
+						_clipboard.text = src.text;
 						mask_written |= Windows::ClipboardDataFormatText;
 					} else _clipboard.text = string();
-					if ((dest.format_mask & Windows::ClipboardDataFormatImage) && dest.image) {
-						_clipboard.image = owrap(new Picturae::Picture(dest.image));
+					if ((src.format_mask & Windows::ClipboardDataFormatImage) && src.image) {
+						_clipboard.image = owrap(new Picturae::Picture(src.image));
 						mask_written |= Windows::ClipboardDataFormatImage;
 					} else _clipboard.image.Clear();
-					if ((dest.format_mask & Windows::ClipboardDataFormatFiles) && dest.files) {
-						_clipboard.files = owrap(new array<string>(*dest.files));
+					if ((src.format_mask & Windows::ClipboardDataFormatFiles) && src.files) {
+						_clipboard.files = owrap(new array<string>(*src.files));
 						mask_written |= Windows::ClipboardDataFormatFiles;
 					} else _clipboard.files.Clear();
-					if (((dest.format_mask & Windows::ClipboardDataFormatData) == Windows::ClipboardDataFormatData) && dest.data) {
-						_clipboard.data_format = dest.data_format;
-						_clipboard.data = owrap(new DataBlock(*dest.data));
-						mask_written |= Windows::ClipboardDataFormatData;
-					} else {
-						_clipboard.data_format = string();
+					if (((src.format_mask & Windows::ClipboardDataFormatData) == Windows::ClipboardDataFormatData) && !src.data.IsEmpty()) {
 						_clipboard.data.Clear();
-					}
+						for (auto & f : src.data) if (f.value) _clipboard.data.Append(f.key, owrap(new DataBlock(*f.value)));
+						mask_written |= Windows::ClipboardDataFormatData;
+					} else _clipboard.data.Clear();
 				} catch (...) { return false; }
 				if (mask_written) _xlib_api->XSetSelectionOwner(_con->GetXDisplay(), _atoms.clipboard, _service_window, CurrentTime);
 				_clipboard.format_mask = mask_written;
 				return mask_written != 0;
+			}
+			virtual void ProcessSelectionRequest(XSelectionRequestEvent & event, const Windows::ClipboardDataDesc & data, Atom selection) noexcept override { _clipboard_respond(&event, data, selection); }
+			virtual bool ReadSelection(uint format_mask, Windows::ClipboardDataDesc & dest, Window service, Atom selection) noexcept override
+			{
+				try {
+					if (format_mask & Windows::ClipboardDataFormatText) {
+						auto data = _clipboard_query_property(_atoms.text_utf8, service, selection);
+						if (!data) data = _clipboard_query_property(_atoms.text, service, selection);
+						if (data) {
+							dest.text = string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8);
+							dest.format_mask |= Windows::ClipboardDataFormatText;
+						}
+					}
+					if (format_mask & Windows::ClipboardDataFormatImage) {
+						auto data = _clipboard_query_property(_atoms.image_png, service, selection);
+						if (!data) data = _clipboard_query_property(_atoms.image_jpeg, service, selection);
+						if (!data) data = _clipboard_query_property(_atoms.image_tiff, service, selection);
+						if (!data) data = _clipboard_query_property(_atoms.image_webp, service, selection);
+						if (!data) data = _clipboard_query_property(_atoms.image_bmp, service, selection);
+						if (data) {
+							dest.image = Picturae::DecodePicture(StaticMemoryStream::Create(data->GetBuffer(), data->GetLength()));
+							dest.format_mask |= Windows::ClipboardDataFormatImage;
+						}
+					}
+					if (format_mask & Windows::ClipboardDataFormatFiles) {
+						auto data = _clipboard_query_property(_atoms.text_uri_list, service, selection);
+						if (data) {
+							auto uri = SplitString(string(data->GetBuffer(), data->GetLength(), Unicode::Encoding::UTF8).Replace(U'\r', string()), U'\n');
+							dest.files = owrap(new array<string>(uri.GetLength()));
+							for (auto & u : uri) if (u.Substring(0, 7) == U"file://") dest.files->Append(_uri_path_transform(u.Substring(7, -1), true));
+							dest.format_mask |= Windows::ClipboardDataFormatFiles;
+						}
+					}
+					if (format_mask & Windows::ClipboardDataFormatDataFormat) {
+						dest.data.Clear();
+						oref<DataBlock> data, data_format;
+						data_format = _clipboard_query_property(_atoms.data_format, service, selection);
+						if (data_format) {
+							dest.format_mask |= Windows::ClipboardDataFormatDataFormat;
+							if (format_mask & Windows::ClipboardDataFormatDataTypeless) {
+								data = _clipboard_query_property(_atoms.data, service, selection);
+								if (data) dest.format_mask |= Windows::ClipboardDataFormatDataTypeless;
+							}
+							uintptr s = 0, ds = 0;
+							for (uintptr i = 0; i < data_format->GetLength(); i++) if (!(*data_format)[i]) {
+								auto format = string(data_format->GetBuffer() + s, i - s, Unicode::Encoding::UTF8);
+								if (data) {
+									if (4 > data->GetLength() - ds) throw InvalidFormatException();
+									auto bsize = *reinterpret_cast<const uint32 *>(data->GetBuffer() + ds);
+									ds += 4;
+									if (bsize > data->GetLength() - ds) throw InvalidFormatException();
+									auto block = owrap(new DataBlock(1));
+									block->Append(data->GetBuffer() + ds, bsize);
+									ds += bsize;
+									dest.data.Append(format, block);
+								} else dest.data.Append(format, 0);
+								s = i + 1;
+							}
+						}
+					}
+					return dest.format_mask != 0;
+				} catch (...) { return false; }
 			}
 			virtual Index2 GetCursorPosition(void) noexcept override
 			{
@@ -2803,7 +3381,7 @@ namespace ESSE
 			virtual bool LaunchIPCServer(const string & app_id, const string & auth_id) noexcept override
 			{
 				if (_ebus >= 0) return false;
-				try { _ebus_socket_name = U"/tmp/eipc." + auth_id + U"." + app_id; } catch (...) { return false; }
+				try { _ebus_socket_name = XIPCClient::MakeUnixSocketPath(app_id, auth_id); } catch (...) { return false; }
 				_ebus = socket(AF_UNIX, SOCK_STREAM, 0);
 				if (_ebus < 0) return false;
 				struct sockaddr_un addr;
@@ -2812,8 +3390,8 @@ namespace ESSE
 				if (_ebus_socket_name.GetLength() >= sizeof(addr.sun_path)) { close(_ebus); _ebus = -1; return false; }
 				Memory::MemoryCopy(&addr.sun_path, _ebus_socket_name.GetData(), _ebus_socket_name.GetLength() + 1);
 				if (bind(_ebus, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) { close(_ebus); _ebus = -1; return false; }
-				if (listen(_ebus, SOMAXCONN) < 0) { close(_ebus); _ebus = -1; return false; }
-				if (!_dispatch->RegisterFileHandler(_ebus, this)) { close(_ebus); _ebus = -1; return false; }
+				if (listen(_ebus, SOMAXCONN) < 0) { close(_ebus); unlink(_ebus_socket_name); _ebus = -1; return false; }
+				if (!_dispatch->RegisterFileHandler(_ebus, this)) { close(_ebus); unlink(_ebus_socket_name); _ebus = -1; return false; }
 				return true;
 			}
 			virtual oref<Windows::IIPCClient> CreateIPCClient(const string & server_app_id, const string & server_auth_id) noexcept override { try { return oref<Windows::IIPCClient>::CreateOwned(new XIPCClient(this, server_app_id, server_auth_id)); } catch (...) { return 0; } }
@@ -2821,6 +3399,6 @@ namespace ESSE
 	}
 	namespace Windows
 	{
-		oref<IWindowSystem> ESSE_MODULUS_FENESTRARUM_LINUX_X11_ENTRY(ErrorContext & ectx) noexcept { ESSE_TRY_INTRO return oref<IWindowSystem>(new X11::XWindowSystem); ESSE_TRY_OUTRO(0) }
+		oref<IWindowSystem> ESSE_MODULUS_FENESTRARUM_LINUX_X11_ENTRY(ErrorContext & ectx) noexcept { ESSE_TRY_INTRO return oref<IWindowSystem>::CreateOwned(new X11::XWindowSystem); ESSE_TRY_OUTRO(0) }
 	}
 }

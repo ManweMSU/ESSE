@@ -15,7 +15,7 @@ namespace Engine
 			else if (format == Format::RichText) {
 				ESSE::Windows::ClipboardDataDesc desc;
 				if (!ws->GetClipboardManager()->ReadClipboard(ESSE::Windows::ClipboardDataFormatDataFormat, desc)) return false;
-				return desc.data_format == U"EngineRuntime.RichText";
+				return desc.data.ElementExists(U"EngineRuntime.RichText");
 			} else if (format == Format::Custom) return ws->GetClipboardManager()->ProbeClipboardFormats(ESSE::Windows::ClipboardDataFormatData) != 0;
 			else return false;
 		}
@@ -44,8 +44,10 @@ namespace Engine
 			if (!ws) return false;
 			ESSE::Windows::ClipboardDataDesc desc;
 			if (!ws->GetClipboardManager()->ReadClipboard(ESSE::Windows::ClipboardDataFormatData, desc)) return false;
-			if ((desc.format_mask & ESSE::Windows::ClipboardDataFormatData) == ESSE::Windows::ClipboardDataFormatData && desc.data_format == U"EngineRuntime.RichText") {
-				value = string(desc.data->GetBuffer(), desc.data->GetLength(), Encoding::UTF8);
+			if ((desc.format_mask & ESSE::Windows::ClipboardDataFormatData) == ESSE::Windows::ClipboardDataFormatData) {
+				auto data = desc.data[U"EngineRuntime.RichText"];
+				if (!data) return false;
+				value = string(data->GetBuffer(), data->GetLength(), Encoding::UTF8);
 				return true;
 			} else return false;
 		}
@@ -55,10 +57,12 @@ namespace Engine
 			if (!ws) return false;
 			ESSE::Windows::ClipboardDataDesc desc;
 			if (!ws->GetClipboardManager()->ReadClipboard(ESSE::Windows::ClipboardDataFormatData, desc)) return false;
-			if ((desc.format_mask & ESSE::Windows::ClipboardDataFormatData) == ESSE::Windows::ClipboardDataFormatData && StringCompare(desc.data_format, subclass)) {
+			if ((desc.format_mask & ESSE::Windows::ClipboardDataFormatData) == ESSE::Windows::ClipboardDataFormatData) {
+				auto data = desc.data[static_cast<const widechar *>(subclass)];
+				if (!data) return false;
 				*value = new Array<uint8>(1);
-				(*value)->SetLength(desc.data->GetLength());
-				MemoryCopy((*value)->GetBuffer(), desc.data->GetBuffer(), desc.data->GetLength());
+				(*value)->SetLength(data->GetLength());
+				MemoryCopy((*value)->GetBuffer(), data->GetBuffer(), data->GetLength());
 				return true;
 			} else return false;
 		}
@@ -87,20 +91,19 @@ namespace Engine
 			ESSE::Windows::ClipboardDataDesc desc;
 			desc.format_mask = ESSE::Windows::ClipboardDataFormatText | ESSE::Windows::ClipboardDataFormatData;
 			desc.text = static_cast<const widechar *>(plain);
-			desc.data_format = U"EngineRuntime.RichText";
-			desc.data = ESSE::EncodeString(ESSE::string(static_cast<const widechar *>(attributed)), ESSE::Unicode::Encoding::UTF8, false);
+			desc.data.Append(U"EngineRuntime.RichText", ESSE::EncodeString(ESSE::string(static_cast<const widechar *>(attributed)), ESSE::Unicode::Encoding::UTF8, false));
 			return ws->GetClipboardManager()->WriteClipboard(desc);
 		}
 		bool SetData(const string & subclass, const void * data, int size)
 		{
 			auto ws = ESSE::Windows::GetWindowSystem();
 			if (!ws) return false;
+			auto block = ESSE::owrap(new ESSE::DataBlock(1));
+			block->SetLength(size);
+			MemoryCopy(block->GetBuffer(), data, size);
 			ESSE::Windows::ClipboardDataDesc desc;
 			desc.format_mask = ESSE::Windows::ClipboardDataFormatData;
-			desc.data_format = static_cast<const widechar *>(subclass);
-			desc.data = ESSE::owrap(new ESSE::DataBlock(1));
-			desc.data->SetLength(size);
-			MemoryCopy(desc.data->GetBuffer(), data, size);
+			desc.data.Append(static_cast<const widechar *>(subclass), block);
 			return ws->GetClipboardManager()->WriteClipboard(desc);
 		}
 		string GetCustomSubclass(void)
@@ -108,8 +111,9 @@ namespace Engine
 			auto ws = ESSE::Windows::GetWindowSystem();
 			if (!ws) return U"";
 			ESSE::Windows::ClipboardDataDesc desc;
-			if (!ws->GetClipboardManager()->ReadClipboard(ESSE::Windows::ClipboardDataFormatDataFormat, desc)) return false;
-			return desc.data_format.GetData();
+			if (!ws->GetClipboardManager()->ReadClipboard(ESSE::Windows::ClipboardDataFormatDataFormat, desc)) return U"";
+			if (desc.data.IsEmpty()) return U"";
+			return desc.data.GetFirst()->GetValue().key.GetData();
 		}
 	}
 }

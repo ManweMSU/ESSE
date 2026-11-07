@@ -3,6 +3,7 @@
 #include <Cor/CorVirtualKeyCodes.h>
 #include <Cor/Tasks/CorThreads.h>
 #include <Cor-Linux/CorIOEx.h>
+#include <Cor-Linux/CorBoot.h>
 
 #include <unistd.h>
 #include <termios.h>
@@ -118,6 +119,7 @@ namespace ESSE
 						else if (number == SIGTERM) ev = ConsoleSessionEvent::Terminate;
 						else continue;
 						Memory::AcquireRootLock();
+						if (Linux::GetShutdownFlag()) { Memory::ReleaseRootLock(); return 0; }
 						auto hdlr = _console_event_handler;
 						Memory::ReleaseRootLock();
 						if (hdlr) hdlr->HandleConsoleSessionEvent(ev);

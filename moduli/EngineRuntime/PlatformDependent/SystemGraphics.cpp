@@ -555,7 +555,7 @@ namespace Engine
 						while (true) {
 							ESSE::ErrorContext ectx; ESSE::ErrorClear(ectx);
 							_shared_rsrc_io_public_name = ESSE::FormatString(U"ert_shared_resource_%0", serial++);
-							_shared_rsrc_io = ESSE::IPC::CreateConnectionListener(_shared_rsrc_io_public_name, ESSE::IPC::ConnectionMode::ConnectionModeRegular, ectx);
+							_shared_rsrc_io = ESSE::IPC::CreateConnectionListener(_shared_rsrc_io_public_name, ESSE::IPC::SharingMode::Synchronous | ESSE::IPC::SharingMode::SessionLocal, ectx);
 							if (ectx.error_code == ESSE::Errores::ErrorIO && ectx.error_subcode == ESSE::Errores::SuberrorIO::FileExists) continue;
 							else if (ectx.error_code == ESSE::Errores::ErrorSuccess) break;
 							else ESSE::ErrorThrow(ectx);
@@ -591,7 +591,7 @@ namespace Engine
 					auto names = ESSE::SplitString(path, U'/');
 					if (names.GetLength() != 2) return 0;
 					uint64 serial = names[1].ToUInt64(HexadecimalBase);
-					auto io = ESSE::IPC::Connect(names[0], ESSE::IPC::ConnectionMode::ConnectionModeRegular);
+					auto io = ESSE::IPC::Connect(names[0], ESSE::IPC::SharingMode::Synchronous | ESSE::IPC::SharingMode::SessionLocal);
 					if (io->SendData(&serial, sizeof(serial)) != sizeof(serial)) throw InvalidStateException();
 					auto inner = _inner->ReceiveResourceHandle(io);
 					return new DeviceResourceHandle(inner, path.GetData());

@@ -28,6 +28,7 @@ namespace ESSE
 
 		string GetPixelFormatName(PixelFormat format)
 		{
+			if (format == PixelFormat::Invalid) return U"NULL";
 			uint pxf = uint(format);
 			dynamic_string_ucs4 result;
 			if (pxf & 0xF0000000) {
@@ -496,7 +497,7 @@ namespace ESSE
 
 		Picture::Picture(const PictureDesc & desc, PictureInit init) : _desc(desc)
 		{
-			if (!desc.width || !desc.height) throw InvalidArgumentException();
+			if (!desc.width || !desc.height || desc.format == PixelFormat::Invalid) throw InvalidArgumentException();
 			_attr.plane = _attr.animation_duration = _attr.pointer_offset_x = _attr.pointer_offset_y = 0;
 			_attr.scale_factor = 1.0;
 			if (init != PictureInit::Refer) {

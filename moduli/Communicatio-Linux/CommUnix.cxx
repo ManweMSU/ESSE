@@ -1,5 +1,6 @@
 #include "CommUnix.h"
 #include <Cor/CorVirtualMemory.h>
+#include <Cor-Linux/CorBoot.h>
 
 #include <unistd.h>
 #include <poll.h>
@@ -82,7 +83,7 @@ namespace ESSE
 					ucs1_string path;
 					if (addr.name[0] == L'/') path = addr.name; else path = U"/tmp/" + addr.name;
 					if (ulnk) *ulnk = path;
-					Memory::MemoryCopy(&sa.sun_path, path.GetData(), min(path.GetLength(), uintptr(sizeof(sa.sun_path))));
+					Memory::MemoryCopy(&sa.sun_path, path.GetData(), min(path.GetLength(), uintptr(sizeof(sa.sun_path) - 1)));
 				} else if (address->GetDomain() == NetworkAddressDomain::IPv4) {
 					auto & addr = *reinterpret_cast<NetworkAddressIPv4 *>(address);
 					dest.SetLength(sizeof(sockaddr_in));
@@ -635,8 +636,10 @@ namespace ESSE
 					Memory::AcquireRootLock();
 					close(_command_in);
 					_command_in = -1;
+					if (Linux::GetShutdownFlag()) { Memory::ReleaseRootLock(); return; }
+					auto dt = _dispatch_thread;
 					Memory::ReleaseRootLock();
-					_dispatch_thread->Wait();
+					dt->Wait();
 				}
 			}
 			static void CreateDispatch(void)

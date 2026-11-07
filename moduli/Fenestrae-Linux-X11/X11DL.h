@@ -766,6 +766,10 @@ namespace ESSE
 			const char * res_name;
 			const char * res_class;
 		} XClassHint;
+		typedef struct {
+			short x, y;
+			unsigned short width, height;
+		} XRectangle;
 		typedef struct _XkbStateRec {
 			unsigned char group;
 			unsigned char locked_group;
@@ -913,6 +917,21 @@ namespace ESSE
 		constexpr long PBaseSize = 1L << 8;
 		constexpr long PWinGravity = 1L << 9;
 
+		constexpr int Unsorted = 0;
+		constexpr int YSorted = 1;
+		constexpr int YXSorted = 2;
+		constexpr int YXBanded = 3;
+
+		constexpr int ShapeSet = 0;
+		constexpr int ShapeUnion = 1;
+		constexpr int ShapeIntersect = 2;
+		constexpr int ShapeSubtract = 3;
+		constexpr int ShapeInvert = 4;
+
+		constexpr int ShapeBounding = 0;
+		constexpr int ShapeClip = 1;
+		constexpr int ShapeInput = 2;
+
 		class XLibAPI : public Object
 		{
 			handle _library;
@@ -942,6 +961,7 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(XCreateWindow, Window, (Display *, Window, int, int, unsigned int, unsigned int, unsigned int, int, unsigned int, Visual *, unsigned int, XSetWindowAttributes *))
 			DEFINE_FUNCTION_POINTER(XDestroyWindow, int, (Display *, Window))
 			DEFINE_FUNCTION_POINTER(XChangeProperty, int, (Display *, Window, Atom, Atom, int, int, const void *, int))
+			DEFINE_FUNCTION_POINTER(XDeleteProperty, int, (Display *, Window, Atom))
 			DEFINE_FUNCTION_POINTER(XSync, int, (Display *, Bool))
 			DEFINE_FUNCTION_POINTER(XChangeWindowAttributes, int, (Display *, Window, unsigned long, XSetWindowAttributes *))
 			DEFINE_FUNCTION_POINTER(XQueryKeymap, int, (Display *, char[32]))
@@ -969,7 +989,7 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(XMapRaised, int, (Display *, Window))
 			DEFINE_FUNCTION_POINTER(XUnmapWindow, int, (Display *, Window))
 			DEFINE_FUNCTION_POINTER(XWithdrawWindow, Status, (Display *, Window, int))
-			DEFINE_FUNCTION_POINTER(XSetSizeHints, int, (Display *, Window, XSizeHints *, Atom))
+			DEFINE_FUNCTION_POINTER(XSetWMSizeHints, int, (Display *, Window, XSizeHints *, Atom))
 			DEFINE_FUNCTION_POINTER(XResizeWindow, int, (Display *, Window, unsigned int, unsigned int))
 			DEFINE_FUNCTION_POINTER(XMoveWindow, int, (Display *, Window, int, int))
 			DEFINE_FUNCTION_POINTER(XCreateIC, XIC, (XIM, ...))
@@ -997,6 +1017,7 @@ namespace ESSE
 			DEFINE_FUNCTION_POINTER(XGetVisualInfo, XVisualInfo *, (Display *, long, XVisualInfo *, int *))
 			DEFINE_FUNCTION_POINTER(XSelectInput, int, (Display *, Window, long))
 			DEFINE_FUNCTION_POINTER(XSetClassHint, int, (Display *, Window, XClassHint *))
+			DEFINE_FUNCTION_POINTER(XAllocSizeHints, XSizeHints *, (void))
 			DEFINE_FUNCTION_POINTER(XkbLibraryVersion, Bool, (int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbQueryExtension, Bool, (Display *, int *, int *, int *, int *, int *))
 			DEFINE_FUNCTION_POINTER(XkbGetMap, XkbDescPtr, (Display *, unsigned int, unsigned int))
@@ -1042,6 +1063,16 @@ namespace ESSE
 		public:
 			XCursorAPI(void);
 			virtual ~XCursorAPI(void) override;
+		};
+		class XShapeAPI : public Object
+		{
+			handle _library;
+		public:
+			DEFINE_FUNCTION_POINTER(XShapeQueryExtension, Bool, (Display *, int *, int *))
+			DEFINE_FUNCTION_POINTER(XShapeCombineRectangles, void, (Display *, Window, int, int, int, XRectangle *, int, int, int))
+		public:
+			XShapeAPI(void);
+			virtual ~XShapeAPI(void) override;
 		};
 
 		extern int LastXError;

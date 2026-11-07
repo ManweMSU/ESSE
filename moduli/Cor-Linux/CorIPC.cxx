@@ -2,6 +2,8 @@
 #include <Cor/CorVirtualMemory.h>
 #include "CorIOEx.h"
 
+#define __USE_GNU
+
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -15,13 +17,25 @@ namespace ESSE
 {
 	namespace IPC
 	{
+		string MakeUnixSocketPath(const string & name, uint mode)
+		{
+			if (name[0] == U'/') return name;
+			else if ((mode & SharingMode::SystemGlobal) || getuid() == 0) return U"/run/" + name + U".sock";
+			else return U"/run/user/" + string(getuid()) + U"/" + name + U".sock";
+		}
+		string MakeUnixLockPath(const string & name, uint mode)
+		{
+			if (name[0] == U'/') return name;
+			else if ((mode & SharingMode::SystemGlobal) || getuid() == 0) return U"/run/" + name + U".lock";
+			else return U"/run/user/" + string(getuid()) + U"/" + name + U".lock";
+		}
 		class LinuxConnection : public IConnection
 		{
 			int _socket;
 		public:
 			LinuxConnection(const string & listener_name, uint mode)
 			{
-				ucs1_string path(U"/tmp/pipe_" + listener_name);
+				ucs1_string path = MakeUnixSocketPath(listener_name, mode);
 				sockaddr_un addr;
 				Memory::ZeroMemory(&addr, sizeof(addr));
 				addr.sun_family = PF_LOCAL;
@@ -101,6 +115,14 @@ namespace ESSE
 			virtual void SendMachPort(uint32 port, ErrorContext & ectx) noexcept override { ErrorSet(ectx, Errores::ErrorNotImplemented); }
 			virtual uint32 ReceiveMachPort(ErrorContext & ectx) noexcept override { ErrorSet(ectx, Errores::ErrorNotImplemented); return 0; }
 			virtual handle GetIOHandle(void) noexcept override { return reinterpret_cast<handle>(intptr(_socket)); }
+			virtual int GetCommunicateePID(void) noexcept override
+			{
+				struct ucred result;
+				socklen_t result_size = sizeof(result);
+				if (getsockopt(_socket, SOL_SOCKET, SO_PEERCRED, &result, &result_size) != 0) return -1;
+				if (result_size != sizeof(result)) return -1;
+				return result.pid;
+			}
 		};
 		class LinuxConnectionListener : public IConnectionListener
 		{
@@ -110,7 +132,7 @@ namespace ESSE
 		public:
 			LinuxConnectionListener(const string & listener_name, uint mode) : _name(listener_name)
 			{
-				_path = _public_path = U"/tmp/pipe_" + _name;
+				_path = _public_path = MakeUnixSocketPath(_name, mode);
 				sockaddr_un addr;
 				Memory::ZeroMemory(&addr, sizeof(addr));
 				addr.sun_family = PF_LOCAL;
@@ -123,6 +145,7 @@ namespace ESSE
 					close(_socket);
 					throw CustomException(ectx);
 				}
+				if (mode & SharingMode::SystemGlobal) fchmod(_socket, 0222); else fchmod(_socket, 0200);
 				if (listen(_socket, SOMAXCONN) < 0) {
 					ErrorContext ectx; Linux::ErrorSetPosix(ectx);
 					unlink(_path); close(_socket);
@@ -159,36 +182,39 @@ namespace ESSE
 			bool _unlink;
 			void * _pdata;
 		public:
-			LinuxSharedMemory(const string & segment_name, uintptr size, FileCreationMode mode) : _name(segment_name), _pdata(MAP_FAILED)
+			LinuxSharedMemory(const string & segment_name, uintptr size, FileCreationMode fmode, uint smode) : _name(segment_name), _pdata(MAP_FAILED)
 			{
 				if (!size) throw InvalidArgumentException();
 				_path = _name;
 				int flags = O_RDWR;
-				if (mode == FileCreationMode::CreateNew) {
+				if (fmode == FileCreationMode::CreateNew) {
 					_unlink = true;
 					flags |= O_CREAT | O_EXCL;
-				} else if (mode == FileCreationMode::OpenExisting) {
+				} else if (fmode == FileCreationMode::OpenExisting) {
 					_unlink = false;
 				} else throw InvalidArgumentException();
-				uint permissions = 0666;
+				uint permissions = (smode & SharingMode::SystemGlobal) ? 0666 : 0600;
 				if (!_path.GetLength()) {
-					_path = FormatString(U"esse-mem-%0-%1", getpid(), string(reinterpret_cast<void *>(this)));
+					if (fmode == FileCreationMode::OpenExisting) throw InputOutputException(Errores::SuberrorIO::FileNotFound);
+					_path = FormatString(U"memoria-%0", string(reinterpret_cast<void *>(this)));
 					permissions = 0;
 				}
 				while (true) {
-					_file = shm_open(_path, flags, permissions);
+					if (permissions) _file = shm_open(_path, flags, permissions);
+					else _file = memfd_create(_path, 0);
 					if (_file < 0 && errno != EINTR) {
 						ErrorContext ectx; Linux::ErrorSetPosix(ectx);
 						throw CustomException(ectx);
 					} else if (_file >= 0) break;
 				}
 				if (_unlink) {
+					if (!permissions) _unlink = false;
 					_length = size;
 					while (true) {
 						auto status = ftruncate(_file, _length);
 						if (status < 0 && errno != EINTR) {
 							ErrorContext ectx; Linux::ErrorSetPosix(ectx);
-							close(_file); shm_unlink(_path);
+							close(_file); if (_unlink) shm_unlink(_path);
 							throw CustomException(ectx);
 						} else if (status >= 0) break;
 					}
@@ -248,11 +274,11 @@ namespace ESSE
 			int _file;
 			bool _locked;
 		public:
-			LinuxSharedLock(const string & lock_name) : _locked(false), _name(lock_name)
+			LinuxSharedLock(const string & lock_name, uint mode) : _locked(false), _name(lock_name)
 			{
-				_path = U"/tmp/lock_" + lock_name;
+				_path = MakeUnixLockPath(lock_name, mode);
 				while (true) {
-					_file = open(_path, O_RDONLY | O_CREAT, 0666);
+					_file = open(_path, O_RDONLY | O_CREAT, (mode & SharingMode::SystemGlobal) ? 0666 : 0600);
 					if (_file < 0 && errno != EINTR) {
 						ErrorContext ectx; Linux::ErrorSetPosix(ectx);
 						throw CustomException(ectx);
@@ -266,35 +292,35 @@ namespace ESSE
 			virtual void Unlock(void) noexcept override { if (_locked) { flock(_file, LOCK_UN); _locked = false; } }
 		};
 
-		oref<IConnection> Connect(const string & listener_name, uint mode, ErrorContext & ectx) noexcept
+		oref<IConnection> Connect(const string & listener_name, uint smode, ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO
 			oref<IConnection> result;
-			result.SetOwned(new LinuxConnection(listener_name, mode));
+			result.SetOwned(new LinuxConnection(listener_name, smode));
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}
-		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint mode, ErrorContext & ectx) noexcept
+		oref<IConnectionListener> CreateConnectionListener(const string & listener_name, uint smode, ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO
 			oref<IConnectionListener> result;
-			result.SetOwned(new LinuxConnectionListener(listener_name, mode));
+			result.SetOwned(new LinuxConnectionListener(listener_name, smode));
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}
-		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode mode, ErrorContext & ectx) noexcept
+		oref<ISharedMemory> CreateSharedMemory(const string & segment_name, uintptr size, FileCreationMode fmode, uint smode, ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO
 			oref<ISharedMemory> result;
-			result.SetOwned(new LinuxSharedMemory(segment_name, size, mode));
+			result.SetOwned(new LinuxSharedMemory(segment_name, size, fmode, smode));
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}
-		oref<ISharedLock> CreateSharedLock(const string & lock_name, ErrorContext & ectx) noexcept
+		oref<ISharedLock> CreateSharedLock(const string & lock_name, uint smode, ErrorContext & ectx) noexcept
 		{
 			ESSE_TRY_INTRO
 			oref<ISharedLock> result;
-			result.SetOwned(new LinuxSharedLock(lock_name));
+			result.SetOwned(new LinuxSharedLock(lock_name, smode));
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}
@@ -306,8 +332,8 @@ namespace ESSE
 			return result;
 			ESSE_TRY_OUTRO(0)
 		}
-		void PurifyConnectionListener(const string & name) noexcept { try { unlink(ucs1_string(U"/tmp/pipe_" + name)); } catch (...) {} }
-		void PurifySharedMemory(const string & name) noexcept { try { shm_unlink(ucs1_string(name)); } catch (...) {} }
-		void PurifySharedLock(const string & name) noexcept { try { unlink(ucs1_string(U"/tmp/lock_" + name)); } catch (...) {} }
+		void PurifyConnectionListener(const string & name, uint smode) noexcept { try { unlink(ucs1_string(MakeUnixSocketPath(name, smode))); } catch (...) {} }
+		void PurifySharedMemory(const string & name, uint smode) noexcept { try { shm_unlink(ucs1_string(name)); } catch (...) {} }
+		void PurifySharedLock(const string & name, uint smode) noexcept { try { unlink(ucs1_string(MakeUnixLockPath(name, smode))); } catch (...) {} }
 	}
 }

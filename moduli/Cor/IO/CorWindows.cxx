@@ -30,6 +30,10 @@ namespace ESSE
 		void IWindowCallback::RightButtonIsUp(IWindow * window, const Index2 & at) noexcept {}
 		void IWindowCallback::ScrollVertically(IWindow * window, const Index2 & at, double delta) noexcept {}
 		void IWindowCallback::ScrollHorizontally(IWindow * window, const Index2 & at, double delta) noexcept {}
+		uint IWindowCallback::DragEntered(IWindow * window, IDragSession * drag, const Index2 & at) noexcept { return 0; }
+		uint IWindowCallback::DragMoved(IWindow * window, IDragSession * drag, const Index2 & at) noexcept { return 0; }
+		uint IWindowCallback::DragDropped(IWindow * window, IDragSession * drag, const Index2 & at) noexcept { return 0; }
+		void IWindowCallback::DragLeft(IWindow * window) noexcept {}
 		void IWindowCallback::EndPopup(IWindow * window) noexcept {}
 		void IWindowCallback::Timer(IWindow * window, int timer_id) noexcept {}
 		void IWindowCallback::ThemeChanged(IWindow * window) noexcept {}
@@ -40,11 +44,12 @@ namespace ESSE
 		bool IApplicationCallback::AcceptsWindowCommand(WindowCommand command) noexcept { return false; }
 		bool IApplicationCallback::HandleApplicationCommand(ApplicationCommand command, const string & argument) noexcept { return false; }
 		void IApplicationCallback::HandleHotKeyEvent(uint event_id) noexcept {}
-		bool IApplicationCallback::IPCReceiveData(handle client, const string & verb, const void * data, uintptr length) noexcept { return false; }
-		oref<DataBlock> IApplicationCallback::IPCSendData(handle client, const string & verb) noexcept { return 0; }
+		oref<DataBlock> IApplicationCallback::IPCClientMessage(handle client, const string & verb, const void * data, uintptr length) noexcept { return 0; }
 		void IApplicationCallback::IPCClientDisconnect(handle client) noexcept {}
 
 		void IMenuItemCallback::MenuItemDisposed(IMenuItem * item) noexcept {}
 		void IStatusCallback::HandleStatusIconCommand(IStatusBarIcon * icon, int id) noexcept {}
+		void IDragCallback::DragStarted(IWindow * origin, const DragDataDesc & desc) noexcept {}
+		void IDragCallback::DragFinished(uint drag_action) noexcept {}
 	}
 }

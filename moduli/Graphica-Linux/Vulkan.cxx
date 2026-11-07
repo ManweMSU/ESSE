@@ -582,7 +582,7 @@ namespace ESSE
 			VKSharedObject(VKDeviceAPI * api, ITexture * texture, VkPhysicalDevice physical, VkDeviceMemory memory, uint64 memory_size)
 			{
 				if (!api->Dispatch.vkGetMemoryFdKHR) throw NotImplementedException();
-				auto shmem = IPC::CreateSharedMemory(U"", sizeof(_shared_object_desc), FileCreationMode::CreateNew);
+				auto shmem = IPC::CreateSharedMemory(U"", sizeof(_shared_object_desc), FileCreationMode::CreateNew, 0);
 				_data = reinterpret_cast<_shared_object_desc *>(shmem->Map(Memory::VirtualMemoryMapRead | Memory::VirtualMemoryMapWrite));
 				int devmem_fd;
 				VkMemoryGetFdInfoKHR get_fd;

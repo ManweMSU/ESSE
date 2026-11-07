@@ -16,6 +16,7 @@ namespace ESSE
 		int				__argument_count = 0;
 		const char **	__argument_volume = 0;
 		pid_t			__this_process_pid;
+		volatile bool	__shutdown_environment = false;
 
 		void ApplicationInit(int argc, const char ** argv) noexcept
 		{
@@ -60,9 +61,17 @@ namespace ESSE
 				sigaction(SIGPIPE, &sa, 0);
 			}
 		}
-		void ApplicationShutdown(void) noexcept {}
+		void ApplicationShutdown(void) noexcept
+		{
+			if (InterlockedDecrement(__esse_reference_count) == 0) {
+				Memory::AcquireRootLock();
+				__shutdown_environment = true;
+				Memory::ReleaseRootLock();
+			}
+		}
 		void GetCommandLine(int * argc, const char *** argv) noexcept { *argc = __argument_count; *argv = __argument_volume; }
 		void GetThisProcessPID(pid_t * pid) noexcept { *pid = __this_process_pid; }
+		const volatile bool & GetShutdownFlag(void) noexcept { return __shutdown_environment; }
 	}
 }
 

@@ -32,6 +32,7 @@ namespace ESSE
 	namespace Picturae
 	{
 		enum class PixelFormat : uint {
+			Invalid = 0x00000000,
 			// 32 bpp
 			B8G8R8A8 = 0x04888800, R8G8B8A8 = 0x14888800, B8G8R8X8 = 0x04888008, R8G8B8X8 = 0x14888008,
 			// 24 bpp

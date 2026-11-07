@@ -22,7 +22,7 @@ namespace Engine
 			{
 				ESSE::ErrorContext ectx; ESSE::ErrorClear(ectx);
 				uint mode = 0;
-				if (flags & CreateConnectionMultiThreaded) mode |= ESSE::IPC::ConnectionMode::ConnectionModeThreadSafe;
+				if (flags & CreateConnectionMultiThreaded) mode |= ESSE::IPC::SharingMode::AsyncReadWrite;
 				_con = ESSE::IPC::Connect(static_cast<const ESSE::unichar32 *>(listener_name), mode, ectx);
 				if (ESSE::ErrorTest(ectx)) {
 					if (error) *error = ErrorContextToIPC(ectx);
@@ -55,7 +55,7 @@ namespace Engine
 			{
 				ESSE::ErrorContext ectx; ESSE::ErrorClear(ectx);
 				uint mode = 0;
-				if (flags & CreateConnectionMultiThreaded) mode |= ESSE::IPC::ConnectionMode::ConnectionModeThreadSafe;
+				if (flags & CreateConnectionMultiThreaded) mode |= ESSE::IPC::SharingMode::AsyncReadWrite;
 				_con = ESSE::IPC::CreateConnectionListener(static_cast<const ESSE::unichar32 *>(listener_name), mode, ectx);
 				if (ESSE::ErrorTest(ectx)) {
 					if (error) *error = ErrorContextToIPC(ectx);
@@ -86,7 +86,7 @@ namespace Engine
 				ESSE::FileCreationMode mode;
 				if (flags & SharedMemoryCreateNew) mode = ESSE::FileCreationMode::CreateNew;
 				else mode = ESSE::FileCreationMode::OpenExisting;
-				_mem = ESSE::IPC::CreateSharedMemory(static_cast<const ESSE::unichar32 *>(segment_name), length, mode, ectx);
+				_mem = ESSE::IPC::CreateSharedMemory(static_cast<const ESSE::unichar32 *>(segment_name), length, mode, ESSE::IPC::SharingMode::SessionLocal, ectx);
 				if (ESSE::ErrorTest(ectx)) {
 					if (error) *error = ErrorContextToIPC(ectx);
 					throw Exception();
@@ -115,7 +115,7 @@ namespace Engine
 			SystemSharedLock(const string & lock_name, uint * error)
 			{
 				ESSE::ErrorContext ectx; ESSE::ErrorClear(ectx);
-				_lock = ESSE::IPC::CreateSharedLock(static_cast<const ESSE::unichar32 *>(lock_name), ectx);
+				_lock = ESSE::IPC::CreateSharedLock(static_cast<const ESSE::unichar32 *>(lock_name), ESSE::IPC::SharingMode::SessionLocal, ectx);
 				if (ESSE::ErrorTest(ectx)) {
 					if (error) *error = ErrorContextToIPC(ectx);
 					throw Exception();
@@ -132,8 +132,8 @@ namespace Engine
 		ISharedMemory * CreateSharedMemory(const string & segment_name, uint length, uint flags, uint * error) noexcept { try { if (error) *error = ErrorAllocation; return new SystemSharedMemory(segment_name, length, flags, error); } catch (...) { return 0; } }
 		ISharedLock * CreateSharedLock(const string & lock_name, uint * error) noexcept { try { if (error) *error = ErrorAllocation; return new SystemSharedLock(lock_name, error); } catch (...) { return 0; } }
 
-		void DestroyConnectionListener(const string & name) noexcept { ESSE::IPC::PurifyConnectionListener(static_cast<const ESSE::unichar32 *>(name)); }
-		void DestroySharedMemory(const string & name) noexcept { ESSE::IPC::PurifySharedMemory(static_cast<const ESSE::unichar32 *>(name)); }
-		void DestroySharedLock(const string & name) noexcept { ESSE::IPC::PurifySharedLock(static_cast<const ESSE::unichar32 *>(name)); }
+		void DestroyConnectionListener(const string & name) noexcept { ESSE::IPC::PurifyConnectionListener(static_cast<const ESSE::unichar32 *>(name), ESSE::IPC::SharingMode::SessionLocal); }
+		void DestroySharedMemory(const string & name) noexcept { ESSE::IPC::PurifySharedMemory(static_cast<const ESSE::unichar32 *>(name), ESSE::IPC::SharingMode::SessionLocal); }
+		void DestroySharedLock(const string & name) noexcept { ESSE::IPC::PurifySharedLock(static_cast<const ESSE::unichar32 *>(name), ESSE::IPC::SharingMode::SessionLocal); }
 	}
 }
