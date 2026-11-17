@@ -546,7 +546,7 @@ namespace ESSE
 									auto y = string(escaped + 2, del - 2).ToUInt32();
 									auto x = string(escaped + del + 1, w - del - 2).ToUInt32();
 									if (tcsetattr(in, TCSADRAIN, &preserve) < 0) { Linux::ErrorSetPosix(ectx); return ConsolePosition(0, 0); }
-									return ConsolePosition(x, y);
+									return ConsolePosition(x - 1, y - 1);
 								} else _unprocessed_input.Append(escaped, w);
 							} else _unprocessed_input.Append(escaped, 2);
 						} else if (escaped[0] == Unicode::CharacterInvalid) {
