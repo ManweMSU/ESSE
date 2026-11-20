@@ -1,7 +1,7 @@
 mkdir resurrect/_obj
 mkdir resurrect/_bin
 echo 'Resurrectorem compilo...'
-cc resurrect/resurrector.c -o resurrect/_bin/resurrector &>> resurrect/_obj/resurrector.log || { echo "Compilatio resurrectoris falsa."; exit 1; }
+cc resurrect/resurrector.c -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 -o resurrect/_bin/resurrector &>> resurrect/_obj/resurrector.log || { echo "Compilatio resurrectoris falsa."; exit 1; }
 echo 'Constructorem resurgo...'
 resurrect/_bin/resurrector resurrect/aux-stub.cxx \
     constructor/ \

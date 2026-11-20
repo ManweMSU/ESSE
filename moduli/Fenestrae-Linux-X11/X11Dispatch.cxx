@@ -9,7 +9,7 @@ namespace ESSE
 {
 	namespace X11
 	{
-		XServerConnection::XServerConnection(XLibAPI * xlib_api) noexcept : _xlib_api(xlib_api)
+		XServerConnection::XServerConnection(XLibAPI * xlib_api) : _xlib_api(xlib_api)
 		{
 			_display = _xlib_api->XOpenDisplay(0);
 			if (!_display) _display = _xlib_api->XOpenDisplay(":0");

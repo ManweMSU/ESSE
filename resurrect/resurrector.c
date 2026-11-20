@@ -3,6 +3,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <wait.h>
@@ -20,14 +21,20 @@ const char * defines[] = {
 	"ESSE_VERSIO_CORDIS_MICRO=0"
 };
 const char * defines_x86[] = {
-	"ESSE_MACHINA_X86_32=1"
+	"ESSE_MACHINA_32=1",
+	"ESSE_MACHINA_X86_32=1",
+	"_FILE_OFFSET_BITS=64",
+	"_TIME_BITS=64"
 };
 const char * defines_x64[] = {
 	"ESSE_MACHINA_64=1",
 	"ESSE_MACHINA_X86_64=1"
 };
 const char * defines_arm[] = {
-	"ESSE_MACHINA_ARM_V7=1"
+	"ESSE_MACHINA_32=1",
+	"ESSE_MACHINA_ARM_V7=1",
+	"_FILE_OFFSET_BITS=64",
+	"_TIME_BITS=64"
 };
 const char * defines_arm64[] = {
 	"ESSE_MACHINA_64=1",
@@ -91,6 +98,7 @@ int index_directory(const char * path)
 	if (!dir) return 0;
 	struct dirent * ent;
 	int status = 1;
+	errno = 0;
 	while (ent = readdir(dir)) {
 		if (ent->d_name[0] == '.') continue;
 		char * common_path = malloc(strlen(path) + strlen(ent->d_name) + 2);
@@ -112,6 +120,7 @@ int index_directory(const char * path)
 		free(common_path);
 		if (!status) break;
 	}
+	if (errno) status = 0;
 	closedir(dir);
 	return status;
 }

@@ -8,8 +8,10 @@ namespace ESSE
 {
 	uint InterlockedIncrement(uint & value) noexcept { return __sync_add_and_fetch(&value, 1); }
 	uint InterlockedDecrement(uint & value) noexcept { return __sync_sub_and_fetch(&value, 1); }
+	#ifdef ESSE_MACHINA_64
 	uintptr InterlockedIncrement(uintptr & value) noexcept { return __sync_add_and_fetch(&value, 1); }
 	uintptr InterlockedDecrement(uintptr & value) noexcept { return __sync_sub_and_fetch(&value, 1); }
+	#endif
 	namespace Memory
 	{
 		void * VirtualAllocate(uintptr size, uint attributes, ErrorContext & ectx) noexcept

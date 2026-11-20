@@ -23,7 +23,7 @@ namespace ESSE
 			oref<XLibAPI> _xlib_api;
 			Display * _display;
 		public:
-			XServerConnection(XLibAPI * xlib_api) noexcept;
+			XServerConnection(XLibAPI * xlib_api);
 			virtual ~XServerConnection(void) override;
 			Display * GetXDisplay(void) const noexcept;
 			XLibAPI * GetAPI(void) const noexcept;

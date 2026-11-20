@@ -123,6 +123,14 @@ namespace ESSE
 			Linux_ProcessorInformation.feature_sha256_sw = ProcessorFeatureStatus::Present;
 			Linux_ProcessorInformation.feature_sha512 = Linux_CheckFeature(in, length, "sha512") ? ProcessorFeatureStatus::Present : ProcessorFeatureStatus::Unavailable;
 			Linux_ProcessorInformation.feature_sha512_sw = ProcessorFeatureStatus::Present;
+			#elif defined(ESSE_MACHINA_ARM_V7)
+			Linux_ProcessorInformation.feature_cpuid = ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_random = ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_aes = Linux_CheckFeature(in, length, "aes") ? ProcessorFeatureStatus::Present : ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_sha256 = Linux_CheckFeature(in, length, "sha2") ? ProcessorFeatureStatus::Present : ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_sha256_sw = Linux_CheckFeature(in, length, "neon") ? ProcessorFeatureStatus::Present : ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_sha512 = ProcessorFeatureStatus::Unavailable;
+			Linux_ProcessorInformation.feature_sha512_sw = Linux_CheckFeature(in, length, "neon") ? ProcessorFeatureStatus::Present : ProcessorFeatureStatus::Unavailable;
 			#else
 			Linux_ProcessorInformation.feature_cpuid = ProcessorFeatureStatus::Unavailable;
 			Linux_ProcessorInformation.feature_random = ProcessorFeatureStatus::Unavailable;
