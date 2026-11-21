@@ -78,8 +78,10 @@ public:
 				ExitProcess(0);
 			}
 		}
-		font = owrap(new Graphica::AggregateFont(factory, U"", Graphica::CreateFontSystemDefault | Graphica::CreateFontWeight700, 100));
-		ts = owrap(new Graphica::Typesetter(font, U"Валера пиздюк 🩶❤️ 🌹", Graphica::TypesetterFlags::HorizontalAlignmentCenter | Graphica::TypesetterFlags::VerticalAlignmentCenter | Graphica::TypesetterFlags::Underlined, Color(255, 255, 255)));
+		try {
+			font = owrap(new Graphica::AggregateFont(factory, U"", Graphica::CreateFontSystemDefault | Graphica::CreateFontWeight700, 100));
+			ts = owrap(new Graphica::Typesetter(font, U"Валера пиздюк 🩶❤️ 🌹", Graphica::TypesetterFlags::HorizontalAlignmentCenter | Graphica::TypesetterFlags::VerticalAlignmentCenter | Graphica::TypesetterFlags::Underlined, Color(255, 255, 255)));
+		} catch (...) {}
 	}
 	virtual void Destroyed(Windows::IWindow * window) noexcept
 	{
@@ -108,7 +110,7 @@ public:
 			int w = h * ai;
 			context->Render(brush, Rectangle(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2));
 		}
-		ts->Render(context, 0, Rectangle(0, 0, size.x, size.y));
+		if (ts) ts->Render(context, 0, Rectangle(0, 0, size.x, size.y));
 		context->EndRendering();
 	}
 	virtual void WindowClosed(Windows::IWindow * window) noexcept

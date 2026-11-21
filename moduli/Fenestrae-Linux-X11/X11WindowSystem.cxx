@@ -1846,6 +1846,7 @@ namespace ESSE
 						_bitmap = _factory->LoadBitmap(colored);
 					} else _bitmap = _factory->LoadBitmap(frame);
 					_cairo_api = static_cast<Cairo::CairoBitmap *>(_bitmap.Inner())->GetAPI();
+					try { _con->RetainAPI(U"Cairo", _cairo_api); } catch (...) { return; }
 					if (_cairo_pattern) { _cairo_api->cairo_pattern_destroy(_cairo_pattern); _cairo_pattern = 0; }
 					_cairo_pattern = _cairo_api->cairo_pattern_create_for_surface(static_cast<Cairo::CairoBitmap *>(_bitmap.Inner())->GetSurface());
 					if (_cairo_api->cairo_pattern_status(_cairo_pattern) != CAIRO_STATUS_SUCCESS) {
@@ -2710,6 +2711,10 @@ namespace ESSE
 				try { _xrender_api = owrap(new XRenderAPI); } catch (...) {}
 				try { _xcursor_api = owrap(new XCursorAPI); } catch (...) {}
 				try { _xshape_api = owrap(new XShapeAPI); } catch (...) {}
+				if (_xrandr_api) _con->RetainAPI(U"XRANDR", _xrandr_api);
+				if (_xrender_api) _con->RetainAPI(U"XRender", _xrender_api);
+				if (_xcursor_api) _con->RetainAPI(U"XCursor", _xcursor_api);
+				if (_xshape_api) _con->RetainAPI(U"XShape", _xshape_api);
 				_ibus_sync = CreateSemaphore(1);
 				if (!_ibus_sync) throw OutOfMemoryException();
 				sigset_t set;

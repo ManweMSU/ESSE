@@ -17,6 +17,7 @@ namespace ESSE
 		}
 		XServerConnection::~XServerConnection(void) { _xlib_api->XCloseDisplay(_display); }
 		Display * XServerConnection::GetXDisplay(void) const noexcept { return _display; }
+		void XServerConnection::RetainAPI(const string & key, Object * api) { _ext_apis.Append(key, api); }
 		XLibAPI * XServerConnection::GetAPI(void) const noexcept { return _xlib_api; }
 		oref<XServerConnection> XServerConnection::Query(ErrorContext & ectx) noexcept
 		{

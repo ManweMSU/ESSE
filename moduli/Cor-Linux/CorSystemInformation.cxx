@@ -74,7 +74,7 @@ namespace ESSE
 				else if (Memory::StringCompare(sn.machine, "i686") == 0) return Architecture::X86_32;
 				else if (Memory::StringCompare(sn.machine, "i686-AT386") == 0) return Architecture::X86_32;
 				else if (Memory::StringCompare(sn.machine, "aarch64") == 0) return Architecture::ARMv8_A64;
-				else if (Memory::StringLength(sn.machine) >= 5 && Memory::MemoryCompare(sn.machine, "armv7", 5) == 0) return Architecture::ARMv7_T32;
+				else if (Memory::StringLength(sn.machine) >= 5 && Memory::MemoryCompare(sn.machine, "armv7", 5) == 0) return Architecture::ARMv7_AT32;
 				else return Architecture::Unknown;
 			} else return Architecture::Unknown;
 		}

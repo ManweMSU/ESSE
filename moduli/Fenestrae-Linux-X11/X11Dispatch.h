@@ -21,12 +21,14 @@ namespace ESSE
 		class XServerConnection : public Object
 		{
 			oref<XLibAPI> _xlib_api;
+			ObjectDictionary<string, Object> _ext_apis;
 			Display * _display;
 		public:
 			XServerConnection(XLibAPI * xlib_api);
 			virtual ~XServerConnection(void) override;
 			Display * GetXDisplay(void) const noexcept;
 			XLibAPI * GetAPI(void) const noexcept;
+			void RetainAPI(const string & key, Object * api);
 			static oref<XServerConnection> Query(ErrorContext & ectx) noexcept;
 		};
 		class XDispatch : public Object

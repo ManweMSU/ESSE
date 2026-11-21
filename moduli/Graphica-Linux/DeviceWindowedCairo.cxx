@@ -32,6 +32,7 @@ namespace ESSE
 				if (_xrender_format->direct.red == 16 && _xrender_format->direct.blue == 0) _esse_format = Picturae::PixelFormat::B8G8R8A8;
 				else _esse_format = Picturae::PixelFormat::R8G8B8A8;
 			}
+			_con->RetainAPI(U"Cairo", GetAPI());
 			_context = 0;
 			_viewport = _backbuffer_size = Index2(0, 0);
 			_backbuffer = 0;

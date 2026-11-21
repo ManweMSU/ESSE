@@ -182,7 +182,7 @@ string ArchToString(System::Architecture arch)
 {
 	if (arch == System::Architecture::X86_32) return Localized(309);
 	else if (arch == System::Architecture::X86_64) return Localized(310);
-	else if (arch == System::Architecture::ARMv7_T32) return Localized(311);
+	else if (arch == System::Architecture::ARMv7_AT32) return Localized(311);
 	else if (arch == System::Architecture::ARMv8_A64) return Localized(312);
 	else return Localized(308);
 }
@@ -240,9 +240,9 @@ ESSE_MAIN_ROUTINE {
 					if (emu[0]) emu += U", ";
 					emu += U"\033A*" + ArchToString(System::Architecture::X86_64) + U"\033-*";
 				}
-				if (System::IsArchitectureEmulationEnabled(System::Architecture::ARMv7_T32)) {
+				if (System::IsArchitectureEmulationEnabled(System::Architecture::ARMv7_AT32)) {
 					if (emu[0]) emu += U", ";
-					emu += U"\033A*" + ArchToString(System::Architecture::ARMv7_T32) + U"\033-*";
+					emu += U"\033A*" + ArchToString(System::Architecture::ARMv7_AT32) + U"\033-*";
 				}
 				if (System::IsArchitectureEmulationEnabled(System::Architecture::ARMv8_A64)) {
 					if (emu[0]) emu += U", ";

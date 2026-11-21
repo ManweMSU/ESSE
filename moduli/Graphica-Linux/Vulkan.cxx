@@ -4584,6 +4584,7 @@ namespace ESSE
 				auto ws_x11 = reinterpret_cast<X11::IX11WindowSystem *>(window_x11->GetWindowSystem()->DynamicCast(Linux::Classes::X11_WindowSystem, ectx));
 				if (ErrorTest(ectx)) return false;
 				if (!_api->Dispatch.vkGetPhysicalDeviceXlibPresentationSupportKHR(device, queue->GetQueueIndex(), ws_x11->GetConnection()->GetXDisplay(), window_x11->GetVisual()->visualid)) return false;
+				try { ws_x11->GetConnection()->RetainAPI(U"Vulkan", _api->Base); } catch (...) { return false; }
 				VkXlibSurfaceCreateInfoKHR info;
 				info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
 				info.pNext = 0;
