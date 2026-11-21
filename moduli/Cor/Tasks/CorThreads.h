@@ -22,11 +22,13 @@ namespace ESSE
 	public:
 		virtual bool Exited(void) noexcept = 0;
 		virtual int GetExitCode(void) noexcept = 0;
+		virtual int GetTID(void) noexcept = 0;
 	};
 
 	oref<Thread> CreateThread(ThreadRoutine routine, void * argument = 0, uint32 stack_size = NormalStackSize) noexcept;
 	oref<Semaphore> CreateSemaphore(uint32 initial) noexcept;
 	oref<Signal> CreateSignal(bool set) noexcept;
+	int GetThisThreadTID(void) noexcept;
 
 	namespace Memory {
 		bool CreateThreadLocal(handle & index) noexcept;

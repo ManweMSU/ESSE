@@ -347,12 +347,23 @@ oref<Windows::IMenu> CreateTestMenu(void)
 	return m1;
 }
 
+oref<ESSE::IO::Console> con;
+int ThreadProc(void * arg) noexcept
+{
+	con->Write(U"New thread ID (A) = " + string(GetThisThreadTID()) + U"\n");
+	return 0;
+}
 int Main(void)
 {
-	auto con = ESSE::IO::CreateConsole();
+	con = ESSE::IO::CreateConsole();
 	auto & console = *con;
 
 	try {
+		auto thread = CreateThread(ThreadProc);
+		console.Write(U"New thread ID (B) = " + string(thread->GetTID()) + U"\n");
+		console.Write(U"This thread ID = " + string(GetThisThreadTID()) + U"\n");
+		thread->Wait();
+
 		auto hdlr = ESSE::owrap(new HDLR);
 		hdlr->con = con;
 		auto ws = Windows::CreateWindowSystem();

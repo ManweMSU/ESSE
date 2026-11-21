@@ -3,7 +3,9 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <limits.h>
+#include <unistd.h>
 #include <errno.h>
+#include <atomic>
 #include <new>
 
 namespace ESSE
@@ -110,16 +112,18 @@ namespace ESSE
 		oref<Signal> _wait_sync;
 		ThreadRoutine _routine;
 		void * _argument;
+		std::atomic<pid_t> _tid;
 	private:
 		static void * _thread_proc(void * _self) noexcept
 		{
 			auto self = reinterpret_cast<PosixThread *>(_self);
+			self->_tid.store(gettid(), std::memory_order_release);
 			self->_retval = self->_routine(self->_argument);
 			self->_wait_sync->Raise();
 			self->Release();
 			return 0;
 		}
-		PosixThread(void) noexcept : _retval(-1) {}
+		PosixThread(void) noexcept : _retval(-1), _tid(0) {}
 	public:
 		virtual ~PosixThread(void) override {}
 		virtual string ToStringE(ErrorContext & ectx) const noexcept override { ESSE_TRY_INTRO return U"Thread"; ESSE_TRY_OUTRO(string()) }
@@ -127,6 +131,7 @@ namespace ESSE
 		virtual bool WaitFor(uint32 ms) noexcept override { return _wait_sync->WaitFor(ms); }
 		virtual bool Exited(void) noexcept override { return _wait_sync->WaitFor(0); }
 		virtual int GetExitCode(void) noexcept override { if (Exited()) return _retval; else return -1; }
+		virtual int GetTID(void) noexcept override { return _tid.load(std::memory_order_acquire); }
 		static oref<Thread> CreateInstance(ThreadRoutine routine, void * argument, uint32 stack_size) noexcept
 		{
 			auto thread = owrap(new (std::nothrow) PosixThread);
@@ -144,6 +149,7 @@ namespace ESSE
 			auto status = pthread_create(&thread_handle, &thread_attr, _thread_proc, thread.Inner());
 			pthread_attr_destroy(&thread_attr);
 			if (status) { thread->Release(); return 0; }
+			while (thread->_tid.load(std::memory_order_acquire) == 0);
 			return oref<Thread>(thread.Inner());
 		}
 	};
@@ -151,7 +157,8 @@ namespace ESSE
 	oref<Thread> CreateThread(ThreadRoutine routine, void * argument, uint32 stack_size) noexcept { return PosixThread::CreateInstance(routine, argument, stack_size); }
 	oref<Semaphore> CreateSemaphore(uint32 initial) noexcept { try { oref<Semaphore> result; result.SetOwned(new PosixSemaphore(initial)); return result; } catch (...) { return 0; } }
 	oref<Signal> CreateSignal(bool set) noexcept { try { oref<Signal> result; result.SetOwned(new PosixSignal(set)); return result; } catch (...) { return 0; } }
-	
+	int GetThisThreadTID(void) noexcept { return gettid(); }
+
 	namespace Memory {
 		bool CreateThreadLocal(handle & index) noexcept
 		{
